@@ -1,0 +1,53 @@
+/* Content selection and document sharing */
+.type-chooser-modal { width: 1020px; max-width: 100%; }
+.type-chooser { padding: 27px 30px 20px; overflow-y: auto; min-height: 0; }
+.type-chooser-intro { display: flex; justify-content: space-between; align-items: center; gap: 25px; margin-bottom: 23px; }
+.type-chooser-intro h3 { font-size: 22px; margin: 7px 0; letter-spacing: -.5px; }
+.type-chooser-intro p { color: #7c887e; font-size: 12px; }
+.type-chooser-intro .search-input { width: 220px; flex-shrink: 0; }
+.content-type-grid { display: grid; grid-template-columns: repeat(3, minmax(0,1fr)); gap: 12px; }
+.content-type-card { display: flex; align-items: flex-start; text-align: left; gap: 12px; border: 1px solid #e1e7dc; border-radius: 11px; padding: 19px 15px; background: #fff; min-height: 109px; transition: background .15s,border-color .15s; }
+.content-type-card:hover { border-color: #67967a; background: #f5f9f1; }
+.content-type-card > span:nth-child(2) { flex: 1; min-width: 0; }
+.content-type-card strong { display: block; font-size: 13px; font-weight: 650; margin: 3px 0 7px; line-height: 1.45; }
+.content-type-card small { display: block; font-size: 11px; color: #7c887e; line-height: 1.6; }
+.content-type-card > svg { width: 14px; color: #88a282; margin-top: 8px; }
+.content-type-icon { display: grid; place-items: center; width: 38px; height: 38px; border-radius: 10px; background: #edf4e7; color: #477b54; flex-shrink: 0; }
+.content-type-card.pdf-spotlight { background: #eef5e8; border-color: #93b184; }
+.content-type-card.pdf-spotlight .content-type-icon { background: #236d51; color: white; }
+.content-type-card .type-featured { display: block; font-size: 8px; color: #477b54; letter-spacing: 1px; margin-top: 3px; }
+.type-chooser-note { display: flex; gap: 8px; align-items: center; color: #7a8d73; font-size: 11px; margin-top: 22px; }
+.types-no-results { text-align: center; padding: 60px 15px; color: #7c887e; }
+.change-content-type { margin: -4px 0 22px; font-size: 11px; }
+.file-upload-zone { width: 100%; padding: 24px 18px; border: 1px dashed #a1b594; border-radius: 12px; background: #f7faf3; display: flex; align-items: center; flex-direction: column; gap: 10px; text-align: center; }
+.file-upload-zone:hover { border-color: #236d51; background: #f0f6e9; }
+.file-upload-zone strong { max-width: 100%; overflow-wrap: anywhere; font-size: 13px; }
+.file-upload-zone > span:last-child { color: #84947a; font-size: 11px; }
+.file-upload-icon { width: 50px; height: 50px; display: grid; place-items: center; background: #e9f1e1; border-radius: 13px; color: #54814b; }
+.file-upload-zone.has-file { border-style: solid; border-color: #b7cba8; }
+.file-preview-link { margin-top: 13px; font-size: 11px; }
+.file-sharing-note { display: flex; align-items: flex-start; gap: 9px; padding: 13px; background: #f4f6ef; border-radius: 8px; margin-bottom: 20px; color: #7b8c71; }
+.file-sharing-note p,.structured-note { font-size: 11px; line-height: 1.7; }
+.structured-note { color: #839079; margin-bottom: 19px; }
+.checkbox-field { display: flex; align-items: center; gap: 9px; font-size: 12px; margin-bottom: 20px; }
+.checkbox-field input { min-height: 18px; width: 18px; height: 18px; accent-color: #236d51; }
+.preview-content-kind { display: inline-flex; padding: 3px 9px; margin: 9px 0 0; border: 1px solid #dce8d2; border-radius: 5px; background: #edf3e6; color: #6f8b5f; font-size: 10px; }
+@media(max-width:800px) {
+  .type-chooser { padding: 22px; }
+  .content-type-grid { grid-template-columns: repeat(2,minmax(0,1fr)); }
+  .type-chooser-intro { flex-direction: column; align-items: stretch; gap: 17px; }
+  .type-chooser-intro .search-input { width: 100%; }
+}
+@media(max-width:540px) {
+  .type-chooser { padding: 20px 16px; }
+  .content-type-grid { grid-template-columns: 1fr; gap: 10px; }
+  .content-type-card { min-height: 87px; padding: 15px; align-items: center; }
+  .content-type-card strong { font-size: 14px; margin-top: 0; }
+  .content-type-card small { font-size: 12px; }
+  .type-chooser-intro h3 { font-size: 20px; }
+  .type-chooser-intro p,.type-chooser-note { font-size: 12px; }
+  .file-sharing-note p,.structured-note { font-size: 12px; }
+  .file-upload-zone strong { font-size: 14px; }
+  .editor-form .field>label,.editor-form .field input,.editor-form .field textarea,.editor-section .field .select-wrap select { font-size: 12px; }
+  .editor-form .field small { font-size: 11px; }
+}

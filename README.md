@@ -283,4 +283,3 @@ Content-format references: [ZXing barcode content conventions](https://github.co
 ## Review improvements
 
 The PDF editor now puts upload first, and the saved-code menu includes **Share or test link** with the full address, phone-friendly copying, PDF download, and QR downloads. Mobile cards are easier to read. Builds check undefined variables, and a recovery screen handles unexpected view errors. See [the test and improvement review](REVIEW.md) for evidence and practical limits.
-

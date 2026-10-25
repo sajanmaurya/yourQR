@@ -1,0 +1,37 @@
+{
+  "name": "qori",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "A personal, self-hostable QR code workspace",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "dev": "concurrently --kill-others -n api,web \"node --watch --env-file-if-exists=.env server/index.js\" \"vite --host 127.0.0.1\"",
+    "build": "npm run lint && vite build",
+    "start": "node --env-file-if-exists=.env server/index.js",
+    "test": "node --test server/*.test.js",
+    "test:e2e": "playwright test",
+    "reset-password": "node --env-file-if-exists=.env server/reset-password.js",
+    "share:wifi": "node --env-file-if-exists=.env scripts/share-wifi.js",
+    "lint": "eslint client shared server scripts tests *.js"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "helmet": "^8.1.0",
+    "lucide-react": "^0.468.0",
+    "qrcode": "^1.5.4",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "sharp": "^0.35.5"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.55.0",
+    "@vitejs/plugin-react": "^5.0.0",
+    "concurrently": "^9.2.0",
+    "eslint": "^10.13.0",
+    "jsqr": "^1.4.0",
+    "vite": "^7.1.0"
+  }
+}

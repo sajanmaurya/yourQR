@@ -1,0 +1,44 @@
+.fixed-mode-note { display:flex; align-items:center; gap:10px; color:#416d4c; background:#f0f6e9; border:1px solid #d9e5cf; border-radius:8px; padding:12px; font-size:11px; }
+.fixed-mode-note span { display:flex; flex-wrap:wrap; gap:3px 9px; }
+.fixed-mode-note strong { font-weight:650; }
+.preview-save-note { margin:15px 0 0; color:#607455; font-size:11px; line-height:1.7; text-align:center; }
+.share-modal { width:560px; }
+.share-content > .qr-image { width:180px; margin:0 auto 24px; padding:6px; border:1px solid #e3e9dc; }
+.share-link-row { display:flex; align-items:stretch; gap:8px; }
+.share-link-row input { min-width:0; flex:1; font-size:12px; }
+.share-link-row button { flex-shrink:0; }
+.share-primary-actions { display:flex; gap:9px; flex-wrap:wrap; margin:4px 0 18px; }
+.share-network-note { display:flex; align-items:flex-start; gap:9px; padding:13px; background:#f0f6e9; color:#567248; border-radius:8px; }
+.share-network-note p { font-size:12px; line-height:1.7; }
+.share-network-note svg { margin-top:2px; }
+.share-downloads { display:flex; align-items:center; gap:8px; margin:20px 0 10px; }
+.share-downloads > span { flex:1; display:flex; align-items:center; gap:6px; font-size:12px; color:#65775c; }
+.share-analytics-note { font-size:11px; color:#6b7667; line-height:1.6; }
+.recovery-screen { min-height:100vh; padding:55px 24px; display:flex; align-items:center; flex-direction:column; gap:50px; background:#f7f8f5; }
+.recovery-screen section { max-width:460px; padding:32px; text-align:center; background:white; border:1px solid #e0e6db; border-radius:14px; }
+.recovery-screen h1 { font-size:25px; margin:16px 0 12px; }
+.recovery-screen p { font-size:14px; line-height:1.7; color:#697660; margin:0 0 24px; }
+.recovery-icon { display:inline-grid; place-items:center; width:58px; height:58px; border-radius:15px; background:#edf3e7; color:#547d48; }
+@media(max-width:600px) {
+  .qr-grid { grid-template-columns:1fr; }
+  .qr-card-preview .qr-image { width:190px; }
+  .qr-card-body { padding:12px 20px 20px; }
+  .qr-name { font-size:17px; }
+  .qr-destination { font-size:12px; }
+  .card-content-label,.card-folder,.qr-card-meta,.qr-card-meta time { font-size:11px; }
+  .qr-card-actions > button { font-size:13px; min-height:44px; }
+  .qr-card-top .icon-button { width:40px; height:40px; }
+  .create-another-card { min-height:160px; }
+  .filter-tabs > button { font-size:12px; min-height:40px; }
+  .button,.icon-button { min-height:40px; }
+  .editor-modal .modal-footer .button { min-height:43px; font-size:12px; }
+  .fixed-mode-note { font-size:12px; margin-top:6px; }
+  .preview-save-note { font-size:12px; }
+  .toast { top:14px; bottom:auto; z-index:1000; font-size:12px; animation:none; }
+  .share-content { padding:22px 18px; }
+  .share-link-row { flex-wrap:wrap; }
+  .share-link-row input { flex-basis:100%; min-height:44px; }
+  .share-link-row button { min-height:42px; }
+  .share-primary-actions .button { min-height:44px; font-size:13px; }
+  .share-modal .modal-footer .button { min-height:42px; font-size:13px; }
+}

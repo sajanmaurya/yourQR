@@ -1,0 +1,23 @@
+services:
+  qori:
+    build: .
+    restart: unless-stopped
+    init: true
+    ports:
+      - "127.0.0.1:8787:8787"
+    environment:
+      NODE_ENV: production
+      HOST: 0.0.0.0
+      PORT: 8787
+      DB_PATH: /app/data/qori.sqlite
+      PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL to your permanent HTTPS URL in .env}
+      SETUP_TOKEN: ${SETUP_TOKEN:-}
+      TRUST_PROXY: "1"
+      COOKIE_SECURE: "true"
+    volumes:
+      - qori-data:/app/data
+    security_opt:
+      - no-new-privileges:true
+
+volumes:
+  qori-data:

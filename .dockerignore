@@ -1,0 +1,12 @@
+node_modules
+dist
+data
+.env
+.env.*
+!.env.example
+.git
+playwright-report
+test-results
+*.log
+*.zip
+README.md

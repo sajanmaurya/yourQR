@@ -1,0 +1,6 @@
+# Run Caddy on the Docker host. Replace this with your real public domain.
+# Point its DNS to the host and allow inbound TCP ports 80 and 443.
+qr.example.com {
+    encode zstd gzip
+    reverse_proxy 127.0.0.1:8787
+}
