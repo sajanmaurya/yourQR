@@ -53,7 +53,8 @@ export function openPostgresDatabase(connectionString, options = {}) {
   if (!connectionString) throw new Error('DATABASE_URL is required to use PostgreSQL.');
   const pool = new Pool({
     connectionString, max: options.maxConnections ?? 10,
-    connectionTimeoutMillis: 10000,
+    // Neon compute can be cold on the first invocation. Serverless regions are pinned near Neon.
+    connectionTimeoutMillis: options.connectionTimeoutMillis ?? (process.env.VERCEL === '1' ? 25000 : 10000),
     idleTimeoutMillis: 30000,
   });
   const executor = (sql, values) => pool.query(sql, values);
@@ -73,14 +74,22 @@ export function openPostgresDatabase(connectionString, options = {}) {
   const db = interfaceFor(executor, transaction, () => pool.end());
   db.ready = (async () => {
     const url = new URL('./../db/postgres/schema.sql', import.meta.url);
-    const schema = await readFile(fileURLToPath(url), 'utf8');
+    // Skip repeated DDL on every Vercel cold start once the schema exists.
+    // A new/empty database is still initialized transactionally.
     await transaction(async tx => {
-      await tx.exec(schema);
+      const existing = await tx.prepare("SELECT to_regclass('public.qr_codes') AS table_name").get();
+      if (!existing.table_name) {
+        const schema = await readFile(fileURLToPath(url), 'utf8');
+        await tx.exec(schema);
+      }
       await tx.prepare('INSERT INTO workspaces(id,name,owner_account_id,created_at) VALUES(?,?,?,?) ON CONFLICT(id) DO NOTHING')
         .run('legacy', 'Personal legacy workspace', null, new Date().toISOString());
       await tx.prepare('INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO NOTHING')
         .run('analytics_secret', randomBytes(32).toString('hex'));
     });
   })();
+  // Register an immediate rejection handler, even when a serverless function
+  // imports the module before the first request. Consumers still await db.ready.
+  db.ready.catch(() => {});
   return db;
 }

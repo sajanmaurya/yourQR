@@ -4,7 +4,11 @@
   "buildCommand": "npm run build:vercel",
   "functions": {
     "index.js": {
-      "includeFiles": "db/postgres/schema.sql"
+      "includeFiles": "db/postgres/schema.sql",
+      "regions": [
+        "iad1"
+      ],
+      "maxDuration": 60
     }
   },
   "headers": [
@@ -16,6 +20,12 @@
           "value": "no-store, max-age=0"
         }
       ]
+    }
+  ],
+  "rewrites": [
+    {
+      "source": "/",
+      "destination": "/index.html"
     }
   ]
 }

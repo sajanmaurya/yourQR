@@ -95,6 +95,7 @@ export function createApp(options = {}) {
       }
     }
   })();
+  ready.catch(() => {}); // Prevent unhandled-rejection process termination before the first request.
   const app = express();
   // Startup is fail-closed: all routes await schema initialization and secret loading.
   app.use(async (req, res, next) => { try { await ready; next(); } catch (error) { next(error); } });
@@ -524,6 +525,10 @@ export function createApp(options = {}) {
     if (error.type === 'entity.too.large') return res.status(413).json({ error: req.path === '/api/assets' ? 'File uploads must be no larger than 25 MB. PDF/PPTX limits are 20 MB; images are 10 MB.' : 'Request is too large. Use a logo smaller than 200 KB.' });
     if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'Request body must contain valid JSON.' });
     console.error('Qori request failed:', error.message);
+    if (databaseUrl && /connection timeout|connection terminated|ETIMEDOUT|ECONNREFUSED|ENETUNREACH|EHOSTUNREACH|EAI_AGAIN/i.test(error.message || '')) {
+      res.set('Retry-After', '30');
+      return res.status(503).json({ error: 'The database is temporarily unavailable. Please retry shortly.' });
+    }
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   });
   app.locals.ready = ready;
