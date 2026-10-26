@@ -377,14 +377,14 @@ export function createApp(options = {}) {
       if (error.code === '23505' || String(error.message).includes('UNIQUE')) throw new ValidationError('This short-link slug is already in use.', 409);
       throw error;
     }
-    res.status(201).json({ qr: await await mapQR(await getRow(id, req.ownerKey)) });
+    res.status(201).json({ qr: await mapQR(await getRow(id, req.ownerKey)) });
   });
   app.patch('/api/qrs/:id', async (req, res) => {
-    const current = await await mapQR(await getRow(req.params.id, req.ownerKey));
+    const current = await mapQR(await getRow(req.params.id, req.ownerKey));
     const qr = await prepareQR(req.body, current, false, req.ownerKey);
     await db.prepare('UPDATE qr_codes SET name=?,destination=?,payload_json=?,asset_id=?,fg_color=?,bg_color=?,logo_data_url=?,folder_id=?,active=?,updated_at=? WHERE id=?')
       .run(qr.name, qr.destination, JSON.stringify(qr.payload), qr.assetId, qr.fgColor, qr.bgColor, qr.logoDataUrl, qr.folderId, Number(qr.active), new Date().toISOString(), current.id);
-    res.json({ qr: await await mapQR(await getRow(current.id, req.ownerKey)) });
+    res.json({ qr: await mapQR(await getRow(current.id, req.ownerKey)) });
   });
   app.delete('/api/qrs/:id', async (req, res) => {
     await getRow(req.params.id, req.ownerKey);
@@ -393,14 +393,14 @@ export function createApp(options = {}) {
   });
   app.post('/api/preview', async (req, res) => {
     if (req.body?.id !== undefined && typeof req.body.id !== 'string') throw new ValidationError('Choose a valid saved QR code for the preview.');
-    const current = req.body?.id ? await await mapQR(await getRow(req.body.id, req.ownerKey)) : null;
+    const current = req.body?.id ? await mapQR(await getRow(req.body.id, req.ownerKey)) : null;
     const qr = await prepareQR(req.body, current, true, req.ownerKey);
     res.json({ svg: await renderQR(qr), encodedValue: qr.encodedValue });
   });
   app.get('/api/qrs/:id/download', async (req, res) => {
     const format = req.query.format || 'svg';
     if (!['svg', 'png'].includes(format)) throw new ValidationError('Download format must be svg or png.');
-    const qr = await await mapQR(await getRow(req.params.id, req.ownerKey));
+    const qr = await mapQR(await getRow(req.params.id, req.ownerKey));
     const filename = qr.name.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'qori-code';
     res.type(format === 'svg' ? 'image/svg+xml' : 'image/png');
     res.attachment(`${filename}.${format}`);
@@ -450,7 +450,7 @@ export function createApp(options = {}) {
       const date = new Date(start.getTime() + i * 86400000).toISOString().slice(0, 10);
       return { date, scans: dailyMap.get(date) || 0 };
     });
-    const grouped = (column) => (await db.prepare(`SELECT ${column} AS name, COUNT(*) AS count FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.owner_key=?${scope} GROUP BY ${column} ORDER BY count DESC, name ASC`).all(...args)).map((row) => ({ name: row.name, count: Number(row.count) }));
+    const grouped = async (column) => (await db.prepare(`SELECT ${column} AS name, COUNT(*) AS count FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.owner_key=?${scope} GROUP BY ${column} ORDER BY count DESC, name ASC`).all(...args)).map((row) => ({ name: row.name, count: Number(row.count) }));
     const recent = await db.prepare(`SELECT s.id,q.name AS qrName,s.scanned_at AS scannedAt,s.device,s.referrer FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.owner_key=?${scope} ORDER BY s.scanned_at DESC LIMIT 20`).all(...args);
     const topCodes = (await db.prepare(`SELECT q.id,q.name,COUNT(s.id) AS scans FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.owner_key=?${scope} GROUP BY q.id ORDER BY scans DESC, q.name LIMIT 5`).all(...args)).map((row) => ({ ...row, scans: Number(row.scans) }));
     const counts = await db.prepare(`SELECT type,COUNT(*) AS count FROM qr_codes WHERE owner_key=?${qrId ? ' AND id=?' : ''} GROUP BY type`).all(...(qrId ? [req.ownerKey, qrId] : [req.ownerKey]));
