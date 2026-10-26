@@ -18,6 +18,8 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+      - run: npm run build:vercel
+      - run: node scripts/check-vercel.js
 
   postgres-migration:
     runs-on: ubuntu-latest
