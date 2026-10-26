@@ -283,3 +283,10 @@ Content-format references: [ZXing barcode content conventions](https://github.co
 ## Review improvements
 
 The PDF editor now puts upload first, and the saved-code menu includes **Share or test link** with the full address, phone-friendly copying, PDF download, and QR downloads. Mobile cards are easier to read. Builds check undefined variables, and a recovery screen handles unexpected view errors. See [the test and improvement review](REVIEW.md) for evidence and practical limits.
+
+
+## Experimental SaaS development branch
+
+The `saas-development` branch introduces self-serve user accounts and tenant-scoped QR codes, folders, uploaded assets, analytics and JSON exports. It preserves older personal-owner records in the `legacy` workspace. Set `SAAS_MODE=true` locally to enable the **Create an account** screen. Set `SAAS_MODE=false` to preserve the original single-owner flow.
+
+**Not production SaaS yet:** this is a guarded multi-account prototype backed by SQLite. Public registration must remain disabled on any internet-exposed deployment until email verification, account recovery, anti-abuse protections, file scanning, quotas, PostgreSQL migration, reliable backups and production monitoring are implemented and tested. The original application is preserved on `main`.
