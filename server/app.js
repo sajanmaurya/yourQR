@@ -45,6 +45,22 @@ export function createApp(options = {}) {
   }
   const environment = options.environment ?? process.env.NODE_ENV ?? 'development';
   const saasMode = options.saasMode ?? (process.env.SAAS_MODE === 'true');
+  const verificationRequired = saasMode && (environment === 'production' || options.requireEmailVerification === true);
+  const emailSender = options.emailSender || (async ({ to, url }) => {
+    if (!process.env.RESEND_API_KEY || !process.env.MAIL_FROM) throw new Error('Email service is not configured.');
+    const response = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        from: process.env.MAIL_FROM, to: [to], subject: 'Verify your Qori email',
+        text: 'Verify your email to activate Qori: ' + url + '\n\nThis link expires in 24 hours.',
+      }),
+    });
+    if (!response.ok) throw new Error('Email provider rejected verification request.');
+  });
+  if (verificationRequired && !options.emailSender && (!process.env.RESEND_API_KEY || !process.env.MAIL_FROM)) {
+    throw new Error('Production SaaS requires RESEND_API_KEY and MAIL_FROM for email verification.');
+  }
   const setupToken = options.setupToken ?? process.env.SETUP_TOKEN ?? '';
   const secureCookie = options.secureCookie ?? (process.env.COOKIE_SECURE !== undefined ? process.env.COOKIE_SECURE === 'true' : publicUrl.protocol === 'https:');
   const proxyHops = Number(options.trustProxy ?? process.env.TRUST_PROXY ?? 0);
@@ -115,7 +131,7 @@ export function createApp(options = {}) {
     }
     next();
   };
-  const config = () => ({ publicBaseUrl, environment, version: '1.0.0', setupTokenRequired: Boolean(setupToken), localOnly: ['localhost', '127.0.0.1', '[::1]'].includes(publicUrl.hostname), registrationEnabled: saasMode, lanAddressStale: isLanAddressStale(publicBaseUrl, Object.values(networkInterfaces()).flat().filter(Boolean).map(item => item.address)) });
+  const config = () => ({ publicBaseUrl, environment, version: '1.0.0', setupTokenRequired: Boolean(setupToken), localOnly: ['localhost', '127.0.0.1', '[::1]'].includes(publicUrl.hostname), registrationEnabled: saasMode, emailVerificationRequired: verificationRequired, lanAddressStale: isLanAddressStale(publicBaseUrl, Object.values(networkInterfaces()).flat().filter(Boolean).map(item => item.address)) });
 
   app.get('/api/health', (req, res) => res.json({ status: 'ok', version: '1.0.0' }));
   app.get('/api/auth/session', (req, res) => {
@@ -138,10 +154,50 @@ export function createApp(options = {}) {
       if (String(error.message).includes('UNIQUE')) throw new ValidationError('An account already uses this email.', 409);
       throw error;
     }
+    if (verificationRequired) {
+      const token = randomBytes(32).toString('hex');
+      db.prepare('INSERT INTO email_verifications(account_id,token_hash,expires_at) VALUES(?,?,?)')
+        .run(user.id, tokenHash(token), Date.now() + 86400000);
+      try { await emailSender({ to: email, url: publicBaseUrl + '/?verify=' + token }); }
+      catch {
+        db.prepare('DELETE FROM accounts WHERE id=?').run(user.id);
+        throw new ValidationError('Verification email could not be sent. Please try again.', 503);
+      }
+      return res.status(201).json({ requiresVerification: true, message: 'Check your email for the verification link.' });
+    }
     startSession(res, user);
     res.status(201).json({ user });
   });
+  app.post('/api/auth/verify-email', limitAuth, (req, res) => {
+    if (!saasMode) throw new ValidationError('Email verification is disabled.', 403);
+    const token = req.body?.token;
+    if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) throw new ValidationError('Invalid or expired verification link.');
+    const record = db.prepare('SELECT account_id FROM email_verifications WHERE token_hash=? AND expires_at>?').get(tokenHash(token), Date.now());
+    if (!record) throw new ValidationError('Invalid or expired verification link.');
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.prepare('UPDATE accounts SET verified_at=? WHERE id=?').run(new Date().toISOString(), record.account_id);
+      db.prepare('DELETE FROM email_verifications WHERE account_id=?').run(record.account_id);
+      db.exec('COMMIT');
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
+    res.json({ verified: true });
+  });
+  app.post('/api/auth/resend-verification', limitAuth, async (req, res) => {
+    if (!verificationRequired) throw new ValidationError('Email verification is disabled.', 403);
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    if (email && email.length <= 254) {
+      const account = db.prepare('SELECT id FROM accounts WHERE email=? AND verified_at IS NULL').get(email);
+      if (account) {
+        const token = randomBytes(32).toString('hex');
+        db.prepare('INSERT INTO email_verifications(account_id,token_hash,expires_at) VALUES(?,?,?) ON CONFLICT(account_id) DO UPDATE SET token_hash=excluded.token_hash, expires_at=excluded.expires_at')
+          .run(account.id, tokenHash(token), Date.now() + 86400000);
+        await emailSender({ to: email, url: publicBaseUrl + '/?verify=' + token });
+      }
+    }
+    res.json({ message: 'If verification is required, a fresh link has been sent.' });
+  });
   app.post('/api/auth/setup', limitAuth, async (req, res) => {
+    if (saasMode) throw new ValidationError('Legacy owner setup is disabled in SaaS mode.', 403);
     if (db.prepare('SELECT id FROM owner WHERE id = 1').get()) throw new ValidationError('An owner account already exists. Please sign in.', 409);
     if (setupToken ? !constantEquals(req.body?.setupToken, setupToken) : !isLoopback(req.ip)) {
       throw new ValidationError(setupToken ? 'The setup token is incorrect.' : 'Create the first owner on this computer, or configure SETUP_TOKEN for remote setup.', 403);
@@ -172,6 +228,7 @@ export function createApp(options = {}) {
     const stored = candidate?.password_hash || 'scrypt:00000000000000000000000000000000:' + '00'.repeat(64);
     const valid = await verifyPassword(password, stored);
     if (!candidate || !valid) throw new ValidationError('Email or password is incorrect.', 401);
+    if (verificationRequired && account && !account.verified_at) throw new ValidationError('Verify your email before signing in.', 403);
     startSession(res, candidate);
     attempts.delete(req.ip || 'unknown');
     res.json({ user: cleanUser(candidate) });
