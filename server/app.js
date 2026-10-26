@@ -177,7 +177,13 @@ export function createApp(options = {}) {
         .run(user.id, tokenHash(token), Date.now() + 86400000);
       try { await emailSender({ to: email, url: publicBaseUrl + '/?verify=' + token }); }
       catch {
-        await db.prepare('DELETE FROM accounts WHERE id=?').run(user.id);
+        await db.transaction(async tx => {
+          if (db.dialect === 'postgres') {
+            await tx.prepare('DELETE FROM workspace_memberships WHERE account_id=?').run(user.id);
+            await tx.prepare('DELETE FROM workspaces WHERE id=?').run(user.id);
+          }
+          await tx.prepare('DELETE FROM accounts WHERE id=?').run(user.id);
+        });
         throw new ValidationError('Verification email could not be sent. Please try again.', 503);
       }
       return res.status(201).json({ requiresVerification: true, message: 'Check your email for the verification link.' });
@@ -338,7 +344,7 @@ export function createApp(options = {}) {
       for (const target of [payload.fallbackUrl, payload.iosUrl, payload.androidUrl].filter(Boolean)) {
         const value = new URL(target);
         if (/^\/(?:r|files)(?:\/|$)/i.test(value.pathname)) {
-          const ownOrigins = [publicUrl.origin, ...await db.prepare("SELECT encoded_value FROM qr_codes WHERE type='dynamic'").all().map(row => new URL(row.encoded_value).origin)];
+          const ownOrigins = [publicUrl.origin, ...(await db.prepare("SELECT encoded_value FROM qr_codes WHERE type='dynamic'").all()).map(row => new URL(row.encoded_value).origin)];
           if (ownOrigins.includes(value.origin)) throw new ValidationError('Device routes cannot point to this app’s redirect or file endpoints.');
         }
       }
@@ -451,7 +457,7 @@ export function createApp(options = {}) {
       return { date, scans: dailyMap.get(date) || 0 };
     });
     const grouped = async (column) => (await db.prepare(`SELECT ${column} AS name, COUNT(*) AS count FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.owner_key=?${scope} GROUP BY ${column} ORDER BY count DESC, name ASC`).all(...args)).map((row) => ({ name: row.name, count: Number(row.count) }));
-    const recent = await db.prepare(`SELECT s.id,q.name AS qrName,s.scanned_at AS scannedAt,s.device,s.referrer FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.owner_key=?${scope} ORDER BY s.scanned_at DESC LIMIT 20`).all(...args);
+    const recent = await db.prepare(`SELECT s.id,q.name AS "qrName",s.scanned_at AS "scannedAt",s.device,s.referrer FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.owner_key=?${scope} ORDER BY s.scanned_at DESC LIMIT 20`).all(...args);
     const topCodes = (await db.prepare(`SELECT q.id,q.name,COUNT(s.id) AS scans FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.owner_key=?${scope} GROUP BY q.id ORDER BY scans DESC, q.name LIMIT 5`).all(...args)).map((row) => ({ ...row, scans: Number(row.scans) }));
     const counts = await db.prepare(`SELECT type,COUNT(*) AS count FROM qr_codes WHERE owner_key=?${qrId ? ' AND id=?' : ''} GROUP BY type`).all(...(qrId ? [req.ownerKey, qrId] : [req.ownerKey]));
     res.json({ totalScans: Number(totals.total), uniqueVisitors: Number(totals.unique_visitors), dynamicCount: Number(counts.find((row) => row.type === 'dynamic')?.count || 0), staticCount: Number(counts.find((row) => row.type === 'static')?.count || 0), series, devices: await grouped('s.device'), referrers: await grouped('s.referrer'), recent, topCodes, timezone: 'UTC', visitorMetric: 'Approximate daily unique visitors; repeat visitors on different days count again.' });
