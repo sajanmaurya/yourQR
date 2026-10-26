@@ -191,7 +191,7 @@ export function createApp(options = {}) {
     startSession(res, user);
     res.status(201).json({ user });
   });
-  app.post('/api/auth/verify-email', limitAuth, (req, res) => {
+  app.post('/api/auth/verify-email', limitAuth, async (req, res) => {
     if (!saasMode) throw new ValidationError('Email verification is disabled.', 403);
     const token = req.body?.token;
     if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) throw new ValidationError('Invalid or expired verification link.');
