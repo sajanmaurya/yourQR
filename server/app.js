@@ -82,7 +82,7 @@ export function createApp(options = {}) {
       const session = db.prepare('SELECT owner.* FROM sessions JOIN owner ON sessions.owner_id = owner.id WHERE token_hash = ? AND expires_at > ?')
         .get(tokenHash(cookie), Date.now());
       if (session) { req.user = cleanUser(session); req.ownerKey = 'legacy'; }
-      else {
+      else if (saasMode) {
         const account = db.prepare('SELECT accounts.* FROM account_sessions JOIN accounts ON account_sessions.account_id=accounts.id WHERE token_hash=? AND expires_at>?').get(tokenHash(cookie), Date.now());
         if (account) { req.user = cleanUser(account); req.ownerKey = account.id; }
       }
