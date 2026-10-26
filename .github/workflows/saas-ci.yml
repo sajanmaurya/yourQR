@@ -44,6 +44,7 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '24'
+      - run: npm ci
       - run: sudo apt-get update && sudo apt-get install -y postgresql-client
       - run: node scripts/postgres-fixture.js "$RUNNER_TEMP/qori-source.sqlite"
       - run: python3 db/postgres/migrate_sqlite.py --sqlite "$RUNNER_TEMP/qori-source.sqlite" --dry-run
