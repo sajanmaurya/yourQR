@@ -93,7 +93,12 @@ def main():
                 all_tables = ", ".join(COLUMNS) + ", workspaces, workspace_memberships"
                 instructions.write("DO $guard$ BEGIN IF EXISTS (SELECT 1 FROM accounts) OR EXISTS (SELECT 1 FROM qr_codes) OR EXISTS (SELECT 1 FROM workspaces) OR EXISTS (SELECT 1 FROM owner) OR EXISTS (SELECT 1 FROM assets) OR EXISTS (SELECT 1 FROM folders) OR EXISTS (SELECT 1 FROM scans) OR EXISTS (SELECT 1 FROM sessions) OR EXISTS (SELECT 1 FROM account_sessions) OR EXISTS (SELECT 1 FROM email_verifications) OR EXISTS (SELECT 1 FROM settings) OR EXISTS (SELECT 1 FROM workspace_memberships) THEN RAISE EXCEPTION 'Target database is not empty'; END IF; END $guard$;\n")
                 for table, column_string in COLUMNS.items():
+                    if table == "folders":
+                        instructions.write("INSERT INTO workspaces(id,name,owner_account_id,created_at) VALUES ('legacy','Personal legacy workspace',NULL,now()::text);\n")
+                        instructions.write("INSERT INTO workspaces(id,name,owner_account_id,created_at) SELECT id,name || ' workspace',id,created_at FROM accounts;\n")
+                        instructions.write("INSERT INTO workspace_memberships(workspace_id,account_id,role) SELECT id,id,'owner' FROM accounts;\n")
                     cols = column_string.split()
+                    existing = {row[1] for row in connection.execute("PRAGMA table_info(" + table + ")")}
                     filename = directory / (table + ".csv")
                     with filename.open("w", encoding="utf-8", newline="") as writer:
                         sql = "SELECT " + ", ".join((col if col in existing else "NULL AS " + col) for col in cols) + " FROM " + table
@@ -102,9 +107,6 @@ def main():
                     # Directory is created by tempfile, no embedded quote in generated basename.
                     safe_path = str(filename).replace("'", "''")
                     instructions.write(f"\\copy {table} ({', '.join(cols)}) FROM '{safe_path}' WITH (FORMAT csv, NULL '\\N')\n")
-                instructions.write("INSERT INTO workspaces(id,name,owner_account_id,created_at) VALUES ('legacy','Personal legacy workspace',NULL,now()::text);\n")
-                instructions.write("INSERT INTO workspaces(id,name,owner_account_id,created_at) SELECT id,name || ' workspace',id,created_at FROM accounts;\n")
-                instructions.write("INSERT INTO workspace_memberships(workspace_id,account_id,role) SELECT id,id,'owner' FROM accounts;\n")
                 for table, count in counts.items():
                     instructions.write(f"DO $check$ BEGIN IF (SELECT count(*) FROM {table}) != {count} THEN RAISE EXCEPTION 'Row count mismatch for {table}'; END IF; END $check$;\n")
                 instructions.write("COMMIT;\n")
