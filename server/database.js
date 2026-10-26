@@ -94,6 +94,11 @@ export function openDatabase(dbPath) {
       password_hash TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS password_resets (
+      account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS email_verifications (
       account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
       token_hash TEXT NOT NULL UNIQUE,

@@ -13,6 +13,11 @@ CREATE TABLE IF NOT EXISTS accounts (
   verified_at TEXT
 );
 CREATE UNIQUE INDEX IF NOT EXISTS accounts_email_lower_unique ON accounts (lower(email));
+CREATE TABLE IF NOT EXISTS password_resets (
+  account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at BIGINT NOT NULL
+);
 CREATE TABLE IF NOT EXISTS email_verifications (
   account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
   token_hash TEXT NOT NULL UNIQUE,

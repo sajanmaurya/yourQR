@@ -20,6 +20,7 @@ COLUMNS = {
     "sessions": "token_hash owner_id expires_at",
     "account_sessions": "token_hash account_id expires_at",
     "email_verifications": "account_id token_hash expires_at",
+    "password_resets": "account_id token_hash expires_at",
     "settings": "key value",
     "folders": "id name color created_at owner_key",
     "assets": "id kind name mime size bytes created_at owner_key",
@@ -91,7 +92,7 @@ def main():
                 instructions.write("BEGIN;\n")
                 instructions.write(schema.read_text(encoding="utf-8") + "\n")
                 all_tables = ", ".join(COLUMNS) + ", workspaces, workspace_memberships"
-                instructions.write("DO $guard$ BEGIN IF EXISTS (SELECT 1 FROM accounts) OR EXISTS (SELECT 1 FROM qr_codes) OR EXISTS (SELECT 1 FROM workspaces) OR EXISTS (SELECT 1 FROM owner) OR EXISTS (SELECT 1 FROM assets) OR EXISTS (SELECT 1 FROM folders) OR EXISTS (SELECT 1 FROM scans) OR EXISTS (SELECT 1 FROM sessions) OR EXISTS (SELECT 1 FROM account_sessions) OR EXISTS (SELECT 1 FROM email_verifications) OR EXISTS (SELECT 1 FROM settings) OR EXISTS (SELECT 1 FROM workspace_memberships) THEN RAISE EXCEPTION 'Target database is not empty'; END IF; END $guard$;\n")
+                instructions.write("DO $guard$ BEGIN IF EXISTS (SELECT 1 FROM accounts) OR EXISTS (SELECT 1 FROM qr_codes) OR EXISTS (SELECT 1 FROM workspaces) OR EXISTS (SELECT 1 FROM owner) OR EXISTS (SELECT 1 FROM assets) OR EXISTS (SELECT 1 FROM folders) OR EXISTS (SELECT 1 FROM scans) OR EXISTS (SELECT 1 FROM sessions) OR EXISTS (SELECT 1 FROM account_sessions) OR EXISTS (SELECT 1 FROM email_verifications) OR EXISTS (SELECT 1 FROM password_resets) OR EXISTS (SELECT 1 FROM settings) OR EXISTS (SELECT 1 FROM workspace_memberships) THEN RAISE EXCEPTION 'Target database is not empty'; END IF; END $guard$;\n")
                 for table, column_string in COLUMNS.items():
                     if table == "folders":
                         instructions.write("INSERT INTO workspaces(id,name,owner_account_id,created_at) VALUES ('legacy','Personal legacy workspace',NULL,now()::text);\n")
