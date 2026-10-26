@@ -18,3 +18,49 @@ jobs:
       - run: npm ci
       - run: npm test
       - run: npm run build
+
+  postgres-migration:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_DB: qori
+          POSTGRES_USER: qori
+          POSTGRES_PASSWORD: qori_test_password
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U qori -d qori"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://qori:qori_test_password@127.0.0.1:5432/qori
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: node scripts/postgres-fixture.js "$RUNNER_TEMP/qori-source.sqlite"
+      - run: python3 db/postgres/migrate_sqlite.py --sqlite "$RUNNER_TEMP/qori-source.sqlite" --dry-run
+      - run: python3 db/postgres/migrate_sqlite.py --sqlite "$RUNNER_TEMP/qori-source.sqlite"
+      - name: Validate imported data and bytea contents
+        run: |
+          test "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM accounts")" -eq 2
+          test "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM workspaces")" -eq 3
+          test "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM workspace_memberships")" -eq 2
+          test "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM qr_codes")" -eq 1
+          test "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM scans")" -eq 1
+          test "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM assets WHERE octet_length(bytes) = 8")" -eq 1
+          test "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM email_verifications")" -eq 1
+      - name: Reject repeat migration without modifying target
+        run: |
+          if python3 db/postgres/migrate_sqlite.py --sqlite "$RUNNER_TEMP/qori-source.sqlite"; then
+            echo "ERROR: expected migration to reject nonempty target"
+            exit 1
+          fi
+          test "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM qr_codes")" -eq 1

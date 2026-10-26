@@ -1,4 +1,4 @@
-import { mkdirSync, unlinkSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import { openDatabase, hashPassword } from '../server/database.js';
 

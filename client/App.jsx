@@ -73,7 +73,7 @@ export default function App() {
     try { await api('/auth/logout', { method: 'POST' }); setSession(previous => ({ ...previous, authenticated: false, setupRequired: false })); setQrs([]); setFolders([]); setPage('codes'); setFolderId(''); setMobileOpen(false); }
     catch (error) { notify(error.message, true); }
   }
-  if (new URLSearchParams(window.location.search).has('verify')) return <EmailVerification />;
+  if (new window.URLSearchParams(window.location.search).has('verify')) return <EmailVerification />;
   if (!session) return <div className="boot-screen"><Brand /><div>{sessionError ? <><InlineError>{sessionError}</InlineError><button type="button" className="button primary" onClick={loadSession}>Try again</button></> : <Spinner text="Opening your workspace…" />}</div></div>;
   if (!session.authenticated) return <Auth session={session} onAuthenticated={loadSession} />;
 
@@ -114,7 +114,7 @@ export default function App() {
 }
 
 function EmailVerification() {
-  const token = new URLSearchParams(window.location.search).get('verify') || '';
+  const token = new window.URLSearchParams(window.location.search).get('verify') || '';
   const [status, setStatus] = useState('');
   const [busy, setBusy] = useState(false);
   const confirm = async () => {
