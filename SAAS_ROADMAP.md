@@ -51,3 +51,9 @@ Implemented on this branch:
 - Keep the same URL origin during cutover and freeze old writes before taking the final copy. Refer to `db/postgres/README.md` for rollback details.
 
 **Still not a public launch:** no managed Postgres deployment, CDN/short-link uptime guarantees, email delivery verification, object storage migration, rate limiting across replicas, or paid billing.
+
+## Vercel deployment preparation
+
+The Vercel target is now chosen for the frontend and backend. A root `index.js` exports the Express application (no port listener), and `npm run build:vercel` stages the React/Vite output into `public/` for Vercel's CDN. `vercel.json` selects Express and includes PostgreSQL's startup schema. Vercel requires a managed `DATABASE_URL` and stable HTTPS `PUBLIC_BASE_URL`.
+
+**Launch blocked until** a real Vercel project with commercial-plan eligibility and secrets is configured, environment-specific deployment verified, object-storage upload/download flow implemented for >4MB media, and existing QR links smoke-tested. Vercel Functions' request/response limits mean the existing 20MB PDF/PPTX path is **not production-ready** on Vercel. Do not use an ephemeral SQLite file in Vercel Functions.

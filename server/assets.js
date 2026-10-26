@@ -32,6 +32,7 @@ export function registerAssets(app, db) {
     const kind = req.query.type, meta = contentType(kind);
     if (!meta?.file) throw new ValidationError('Choose PDF, image, audio, or PPTX.');
     let bytes = req.body;
+    if (process.env.VERCEL === '1' && Buffer.isBuffer(bytes) && bytes.length > 4000000) throw new ValidationError('Vercel only supports small direct uploads. Larger files must use cloud storage.', 413);
     if (!Buffer.isBuffer(bytes) || bytes.length < 8) throw new ValidationError('Choose a non-empty file to upload.');
     if (bytes.length > meta.maxMB * 1024 * 1024) throw new ValidationError(`${meta.name} files must be no larger than ${meta.maxMB} MB.`);
     let name;
@@ -77,6 +78,7 @@ export function registerAssets(app, db) {
     res.set('ETag', `"${createHash('sha256').update(row.id).digest('hex')}"`);
     res.set('Accept-Ranges', 'bytes');
     const bytes = Buffer.from(row.bytes), range = req.get('range');
+    if (process.env.VERCEL === '1' && bytes.length > 4000000) return res.status(413).type('text/plain').send('File is too large for this hosting platform. Use cloud object storage.');
     if (range) {
       const match = /^bytes=(\d*)-(\d*)$/.exec(range);
       let start = 0, end = bytes.length - 1;

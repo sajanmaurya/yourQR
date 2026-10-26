@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "concurrently --kill-others -n api,web \"node --watch --env-file-if-exists=.env server/index.js\" \"vite --host 127.0.0.1\"",
     "build": "npm run lint && vite build",
+    "build:vercel": "npm run build && node scripts/stage-vercel.js",
     "start": "node --env-file-if-exists=.env server/index.js",
     "test": "node --test server/*.test.js",
     "test:e2e": "playwright test",

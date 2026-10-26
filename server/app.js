@@ -70,7 +70,7 @@ export function createApp(options = {}) {
   const proxyHops = Number(options.trustProxy ?? process.env.TRUST_PROXY ?? 0);
   if (!Number.isInteger(proxyHops) || proxyHops < 0 || proxyHops > 5) throw new Error('TRUST_PROXY must be an integer from 0 to 5.');
   const databaseUrl = options.databaseUrl ?? process.env.DATABASE_URL;
-  const db = databaseUrl ? openPostgresDatabase(databaseUrl) : openDatabase(dbPath);
+  const db = databaseUrl ? openPostgresDatabase(databaseUrl, { maxConnections: process.env.VERCEL === '1' ? 2 : 10 }) : openDatabase(dbPath);
   // Preserve fail-fast setup checks for the existing synchronous SQLite mode.
   if (!databaseUrl && environment === 'production' && !saasMode && !setupToken && !db.prepare('SELECT id FROM owner WHERE id = 1').get()) {
     db.close();
@@ -86,6 +86,14 @@ export function createApp(options = {}) {
       throw new Error('Set a strong SETUP_TOKEN before first production startup. Remove it after creating your owner account.');
     }
     analyticsSecret = (await db.prepare('SELECT value FROM settings WHERE key = ?').get('analytics_secret')).value;
+    // Old printed QR codes linking to large files must not silently break
+    // after moving to Vercel's 4.5MB Function response ceiling.
+    if (process.env.VERCEL === '1') {
+      const oversized = await db.prepare('SELECT COUNT(*) AS count FROM assets a WHERE a.size > ? AND EXISTS (SELECT 1 FROM qr_codes q WHERE q.asset_id=a.id AND q.active=1)').get(4000000);
+      if (Number(oversized.count) > 0) {
+        throw new Error('Vercel cannot serve existing QR-linked files larger than 4MB. Migrate those assets to object storage before deployment.');
+      }
+    }
   })();
   const app = express();
   // Startup is fail-closed: all routes await schema initialization and secret loading.
