@@ -44,6 +44,7 @@ export function createApp(options = {}) {
     throw new Error('PUBLIC_BASE_URL must be an http(s) origin without a path, credentials, query, or fragment.');
   }
   const environment = options.environment ?? process.env.NODE_ENV ?? 'development';
+  const saasMode = options.saasMode ?? (process.env.SAAS_MODE === 'true');
   const setupToken = options.setupToken ?? process.env.SETUP_TOKEN ?? '';
   const secureCookie = options.secureCookie ?? (process.env.COOKIE_SECURE !== undefined ? process.env.COOKIE_SECURE === 'true' : publicUrl.protocol === 'https:');
   const proxyHops = Number(options.trustProxy ?? process.env.TRUST_PROXY ?? 0);
@@ -51,7 +52,7 @@ export function createApp(options = {}) {
   const db = openDatabase(dbPath);
   db.prepare("UPDATE qr_codes SET encoded_value = CASE WHEN type = 'dynamic' THEN ? || '/r/' || slug ELSE destination END WHERE encoded_value IS NULL")
     .run(publicBaseUrl);
-  if (environment === 'production' && !setupToken && !db.prepare('SELECT id FROM owner WHERE id = 1').get()) {
+  if (environment === 'production' && !saasMode && !setupToken && !db.prepare('SELECT id FROM owner WHERE id = 1').get()) {
     db.close();
     throw new Error('Set a strong SETUP_TOKEN before first production startup. Remove it after creating your owner account.');
   }
@@ -80,7 +81,11 @@ export function createApp(options = {}) {
     if (cookie && /^[a-f0-9]{64}$/.test(cookie)) {
       const session = db.prepare('SELECT owner.* FROM sessions JOIN owner ON sessions.owner_id = owner.id WHERE token_hash = ? AND expires_at > ?')
         .get(tokenHash(cookie), Date.now());
-      if (session) req.user = cleanUser(session);
+      if (session) { req.user = cleanUser(session); req.ownerKey = 'legacy'; }
+      else {
+        const account = db.prepare('SELECT accounts.* FROM account_sessions JOIN accounts ON account_sessions.account_id=accounts.id WHERE token_hash=? AND expires_at>?').get(tokenHash(cookie), Date.now());
+        if (account) { req.user = cleanUser(account); req.ownerKey = account.id; }
+      }
     }
     next();
   });
@@ -88,8 +93,10 @@ export function createApp(options = {}) {
   const cookieOptions = { httpOnly: true, secure: secureCookie, sameSite: 'strict', path: '/', maxAge: SESSION_DAYS * 86400000 };
   const startSession = (res, owner) => {
     db.prepare('DELETE FROM sessions WHERE expires_at <= ?').run(Date.now());
+    db.prepare('DELETE FROM account_sessions WHERE expires_at <= ?').run(Date.now());
     const token = randomBytes(32).toString('hex');
-    db.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at) VALUES (?, ?, ?)').run(tokenHash(token), owner.id, Date.now() + SESSION_DAYS * 86400000);
+    if (typeof owner.id === 'string') db.prepare('INSERT INTO account_sessions (token_hash, account_id, expires_at) VALUES (?, ?, ?)').run(tokenHash(token), owner.id, Date.now() + SESSION_DAYS * 86400000);
+    else db.prepare('INSERT INTO sessions (token_hash, owner_id, expires_at) VALUES (?, ?, ?)').run(tokenHash(token), owner.id, Date.now() + SESSION_DAYS * 86400000);
     res.cookie(cookieName, token, cookieOptions);
   };
   const requireAuth = (req, res, next) => req.user ? next() : res.status(401).json({ error: 'Please sign in to continue.' });
@@ -108,12 +115,31 @@ export function createApp(options = {}) {
     }
     next();
   };
-  const config = () => ({ publicBaseUrl, environment, version: '1.0.0', setupTokenRequired: Boolean(setupToken), localOnly: ['localhost', '127.0.0.1', '[::1]'].includes(publicUrl.hostname), lanAddressStale: isLanAddressStale(publicBaseUrl, Object.values(networkInterfaces()).flat().filter(Boolean).map(item => item.address)) });
+  const config = () => ({ publicBaseUrl, environment, version: '1.0.0', setupTokenRequired: Boolean(setupToken), localOnly: ['localhost', '127.0.0.1', '[::1]'].includes(publicUrl.hostname), registrationEnabled: saasMode, lanAddressStale: isLanAddressStale(publicBaseUrl, Object.values(networkInterfaces()).flat().filter(Boolean).map(item => item.address)) });
 
   app.get('/api/health', (req, res) => res.json({ status: 'ok', version: '1.0.0' }));
   app.get('/api/auth/session', (req, res) => {
     const owner = db.prepare('SELECT id FROM owner WHERE id = 1').get();
-    res.json({ authenticated: Boolean(req.user), setupRequired: !owner, user: req.user || null, config: config() });
+    res.json({ authenticated: Boolean(req.user), setupRequired: !saasMode && !owner, user: req.user || null, config: config() });
+  });
+  app.post('/api/auth/register', limitAuth, async (req, res) => {
+    if (!saasMode) throw new ValidationError('Public registration is not enabled.', 403);
+    const name = textField(req.body?.name, 'Name', 80);
+    const email = textField(req.body?.email, 'Email', 254).toLowerCase();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ValidationError('Enter a valid email address.');
+    const password = req.body?.password;
+    if (typeof password !== 'string' || password.length < 12 || password.length > 256) throw new ValidationError('Choose a password with 12–256 characters.');
+    if (db.prepare('SELECT id FROM owner WHERE email=?').get(email)) throw new ValidationError('An account already uses this email.', 409);
+    const hash = await hashPassword(password);
+    const user = { id: randomUUID(), name, email };
+    try {
+      db.prepare('INSERT INTO accounts(id,name,email,password_hash,created_at) VALUES(?,?,?,?,?)').run(user.id, name, email, hash, new Date().toISOString());
+    } catch (error) {
+      if (String(error.message).includes('UNIQUE')) throw new ValidationError('An account already uses this email.', 409);
+      throw error;
+    }
+    startSession(res, user);
+    res.status(201).json({ user });
   });
   app.post('/api/auth/setup', limitAuth, async (req, res) => {
     if (db.prepare('SELECT id FROM owner WHERE id = 1').get()) throw new ValidationError('An owner account already exists. Please sign in.', 409);
@@ -140,17 +166,19 @@ export function createApp(options = {}) {
     const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
     if (!email || email.length > 254 || password.length > 256) throw new ValidationError('Email or password is incorrect.', 401);
-    const owner = db.prepare('SELECT * FROM owner WHERE id = 1').get();
-    const stored = owner?.password_hash || 'scrypt:00000000000000000000000000000000:' + '00'.repeat(64);
+    const owner = db.prepare('SELECT * FROM owner WHERE email=?').get(email);
+    const account = saasMode ? db.prepare('SELECT * FROM accounts WHERE email=?').get(email) : null;
+    const candidate = account || owner;
+    const stored = candidate?.password_hash || 'scrypt:00000000000000000000000000000000:' + '00'.repeat(64);
     const valid = await verifyPassword(password, stored);
-    if (!owner || !constantEquals(email, owner.email) || !valid) throw new ValidationError('Email or password is incorrect.', 401);
-    startSession(res, owner);
+    if (!candidate || !valid) throw new ValidationError('Email or password is incorrect.', 401);
+    startSession(res, candidate);
     attempts.delete(req.ip || 'unknown');
-    res.json({ user: cleanUser(owner) });
+    res.json({ user: cleanUser(candidate) });
   });
   app.post('/api/auth/logout', (req, res) => {
     const token = parseCookie(req.get('cookie'))[cookieName];
-    if (token) db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash(token));
+    if (token) { db.prepare('DELETE FROM sessions WHERE token_hash = ?').run(tokenHash(token)); db.prepare('DELETE FROM account_sessions WHERE token_hash = ?').run(tokenHash(token)); }
     res.clearCookie(cookieName, { httpOnly: true, secure: secureCookie, sameSite: 'strict', path: '/' });
     res.json({ ok: true });
   });
@@ -158,14 +186,14 @@ export function createApp(options = {}) {
   app.use('/api', requireAuth);
   const servePublicAsset = registerAssets(app, db);
   const getRow = (id) => {
-    const row = db.prepare('SELECT q.*, (SELECT COUNT(*) FROM scans WHERE qr_id=q.id) AS scan_count FROM qr_codes q WHERE q.id = ?').get(id);
+    const row = db.prepare('SELECT q.*, (SELECT COUNT(*) FROM scans WHERE qr_id=q.id) AS scan_count FROM qr_codes q WHERE q.id = ? AND q.owner_key=?').get(id, req.ownerKey);
     if (!row) throw new ValidationError('QR code not found.', 404);
     return row;
   };
   const mapQR = (row) => ({
     id: row.id, name: row.name, type: row.type, contentType: row.category || row.content_type,
     payload: JSON.parse(row.payload_json || '{}'), assetId: row.asset_id || null,
-    asset: row.asset_id ? mapAsset(db.prepare('SELECT id,kind,name,mime,size,created_at FROM assets WHERE id=?').get(row.asset_id)) : null,
+    asset: row.asset_id ? mapAsset(db.prepare('SELECT id,kind,name,mime,size,created_at FROM assets WHERE id=? AND owner_key=?').get(row.asset_id, row.owner_key)) : null,
     destination: row.destination, slug: row.slug, fgColor: row.fg_color, bgColor: row.bg_color,
     logoDataUrl: row.logo_data_url, folderId: row.folder_id, active: Boolean(row.active),
     createdAt: row.created_at, updatedAt: row.updated_at, scanCount: Number(row.scan_count || 0),
@@ -174,7 +202,7 @@ export function createApp(options = {}) {
   });
   const validFolderId = (value) => {
     if (value === null || value === undefined || value === '') return null;
-    if (typeof value !== 'string' || !db.prepare('SELECT id FROM folders WHERE id = ?').get(value)) throw new ValidationError('Choose an existing folder.');
+    if (typeof value !== 'string' || !db.prepare('SELECT id FROM folders WHERE id = ? AND owner_key=?').get(value, req.ownerKey)) throw new ValidationError('Choose an existing folder.');
     return value;
   };
   const prepareQR = async (body, current = null, preview = false) => {
@@ -187,7 +215,7 @@ export function createApp(options = {}) {
     if (meta.mode && type !== meta.mode) throw new ValidationError(`${meta.name} codes use ${meta.mode} mode.`);
     if (current && (type !== current.type || contentType !== current.contentType)) throw new ValidationError('A saved code’s type cannot change. Create a new code instead.');
     const name = preview ? String(input.name || 'Preview') : textField(input.name ?? current?.name, 'Name');
-    const resolved = resolveContent(contentType, input, { publicBaseUrl, current, db });
+    const resolved = resolveContent(contentType, input, { publicBaseUrl, current, db, ownerKey: req.ownerKey });
     const { destination, storageType, payload, assetId } = resolved;
     if (storageType === 'url') {
       const destinationUrl = new URL(destination);
@@ -228,15 +256,15 @@ export function createApp(options = {}) {
     return qr;
   };
   app.get('/api/qrs', (req, res) => {
-    const qrs = db.prepare('SELECT q.*, (SELECT COUNT(*) FROM scans WHERE qr_id=q.id) AS scan_count FROM qr_codes q ORDER BY created_at DESC').all().map(mapQR);
+    const qrs = db.prepare('SELECT q.*, (SELECT COUNT(*) FROM scans WHERE qr_id=q.id) AS scan_count FROM qr_codes q WHERE q.owner_key=? ORDER BY created_at DESC').all(req.ownerKey).map(mapQR);
     res.json({ qrs });
   });
   app.post('/api/qrs', async (req, res) => {
     const qr = await prepareQR(req.body);
     const id = randomUUID(), now = new Date().toISOString();
     try {
-      db.prepare('INSERT INTO qr_codes (id,name,type,content_type,category,payload_json,asset_id,destination,encoded_value,slug,fg_color,bg_color,logo_data_url,folder_id,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-        .run(id, qr.name, qr.type, qr.storageType, qr.contentType, JSON.stringify(qr.payload), qr.assetId, qr.destination, qr.encodedValue, qr.slug, qr.fgColor, qr.bgColor, qr.logoDataUrl, qr.folderId, Number(qr.active), now, now);
+      db.prepare('INSERT INTO qr_codes (id,name,type,content_type,category,payload_json,asset_id,destination,encoded_value,slug,fg_color,bg_color,logo_data_url,folder_id,active,created_at,updated_at,owner_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        .run(id, qr.name, qr.type, qr.storageType, qr.contentType, JSON.stringify(qr.payload), qr.assetId, qr.destination, qr.encodedValue, qr.slug, qr.fgColor, qr.bgColor, qr.logoDataUrl, qr.folderId, Number(qr.active), now, now, req.ownerKey);
     } catch (error) {
       if (String(error.message).includes('UNIQUE')) throw new ValidationError('This short-link slug is already in use.', 409);
       throw error;
@@ -271,18 +299,18 @@ export function createApp(options = {}) {
     res.send(await renderQR(qr, format));
   });
 
-  const folderRows = () => db.prepare('SELECT f.*, (SELECT COUNT(*) FROM qr_codes WHERE folder_id = f.id) AS qr_count FROM folders f ORDER BY name COLLATE NOCASE').all();
+  const folderRows = () => db.prepare('SELECT f.*, (SELECT COUNT(*) FROM qr_codes WHERE folder_id = f.id) AS qr_count FROM folders f WHERE f.owner_key=? ORDER BY name COLLATE NOCASE').all(req.ownerKey);
   const mapFolder = (row) => ({ id: row.id, name: row.name, color: row.color, qrCount: Number(row.qr_count || 0) });
   app.get('/api/folders', (req, res) => res.json({ folders: folderRows().map(mapFolder) }));
   app.post('/api/folders', (req, res) => {
     const name = textField(req.body?.name, 'Folder name', 60), color = validColor(req.body?.color, '#638A78');
     const id = randomUUID();
-    try { db.prepare('INSERT INTO folders (id,name,color,created_at) VALUES (?,?,?,?)').run(id, name, color, new Date().toISOString()); }
+    try { db.prepare('INSERT INTO folders (id,name,color,created_at,owner_key) VALUES (?,?,?,?,?)').run(id, name, color, new Date().toISOString(), req.ownerKey); }
     catch (error) { if (String(error.message).includes('UNIQUE')) throw new ValidationError('A folder with this name already exists.', 409); throw error; }
     res.status(201).json({ folder: mapFolder(folderRows().find((row) => row.id === id)) });
   });
   app.patch('/api/folders/:id', (req, res) => {
-    const current = db.prepare('SELECT * FROM folders WHERE id = ?').get(req.params.id);
+    const current = db.prepare('SELECT * FROM folders WHERE id = ? AND owner_key=?').get(req.params.id, req.ownerKey);
     if (!current) throw new ValidationError('Folder not found.', 404);
     const name = textField(req.body?.name ?? current.name, 'Folder name', 60), color = validColor(req.body?.color, current.color);
     try { db.prepare('UPDATE folders SET name=?,color=? WHERE id=?').run(name, color, current.id); }
@@ -290,7 +318,7 @@ export function createApp(options = {}) {
     res.json({ folder: mapFolder(folderRows().find((row) => row.id === current.id)) });
   });
   app.delete('/api/folders/:id', (req, res) => {
-    const current = db.prepare('SELECT id FROM folders WHERE id = ?').get(req.params.id);
+    const current = db.prepare('SELECT id FROM folders WHERE id = ? AND owner_key=?').get(req.params.id, req.ownerKey);
     if (!current) throw new ValidationError('Folder not found.', 404);
     db.prepare('DELETE FROM folders WHERE id = ?').run(current.id);
     res.json({ ok: true });
@@ -306,23 +334,23 @@ export function createApp(options = {}) {
     const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - days + 1));
     const startIso = start.toISOString();
     const scope = qrId ? ' AND s.qr_id = ?' : '';
-    const args = qrId ? [startIso, qrId] : [startIso];
-    const totals = db.prepare(`SELECT COUNT(*) AS total, COUNT(DISTINCT visitor_hash) AS unique_visitors FROM scans s WHERE s.scanned_at >= ?${scope}`).get(...args);
-    const daily = db.prepare(`SELECT substr(s.scanned_at,1,10) AS date, COUNT(*) AS scans FROM scans s WHERE s.scanned_at >= ?${scope} GROUP BY date`).all(...args);
+    const args = qrId ? [startIso, req.ownerKey, qrId] : [startIso, req.ownerKey];
+    const totals = db.prepare(`SELECT COUNT(*) AS total, COUNT(DISTINCT visitor_hash) AS unique_visitors FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.owner_key=?${scope}`).get(...args);
+    const daily = db.prepare(`SELECT substr(s.scanned_at,1,10) AS date, COUNT(*) AS scans FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.owner_key=?${scope} GROUP BY date`).all(...args);
     const dailyMap = new Map(daily.map((row) => [row.date, Number(row.scans)]));
     const series = Array.from({ length: days }, (_, i) => {
       const date = new Date(start.getTime() + i * 86400000).toISOString().slice(0, 10);
       return { date, scans: dailyMap.get(date) || 0 };
     });
-    const grouped = (column) => db.prepare(`SELECT ${column} AS name, COUNT(*) AS count FROM scans s WHERE s.scanned_at >= ?${scope} GROUP BY ${column} ORDER BY count DESC, name ASC`).all(...args).map((row) => ({ name: row.name, count: Number(row.count) }));
-    const recent = db.prepare(`SELECT s.id,q.name AS qrName,s.scanned_at AS scannedAt,s.device,s.referrer FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ?${scope} ORDER BY s.scanned_at DESC LIMIT 20`).all(...args);
-    const topCodes = db.prepare(`SELECT q.id,q.name,COUNT(s.id) AS scans FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ?${scope} GROUP BY q.id ORDER BY scans DESC, q.name LIMIT 5`).all(...args).map((row) => ({ ...row, scans: Number(row.scans) }));
-    const counts = db.prepare(`SELECT type,COUNT(*) AS count FROM qr_codes${qrId ? ' WHERE id=?' : ''} GROUP BY type`).all(...(qrId ? [qrId] : []));
+    const grouped = (column) => db.prepare(`SELECT ${column} AS name, COUNT(*) AS count FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.owner_key=?${scope} GROUP BY ${column} ORDER BY count DESC, name ASC`).all(...args).map((row) => ({ name: row.name, count: Number(row.count) }));
+    const recent = db.prepare(`SELECT s.id,q.name AS qrName,s.scanned_at AS scannedAt,s.device,s.referrer FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.owner_key=?${scope} ORDER BY s.scanned_at DESC LIMIT 20`).all(...args);
+    const topCodes = db.prepare(`SELECT q.id,q.name,COUNT(s.id) AS scans FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.owner_key=?${scope} GROUP BY q.id ORDER BY scans DESC, q.name LIMIT 5`).all(...args).map((row) => ({ ...row, scans: Number(row.scans) }));
+    const counts = db.prepare(`SELECT type,COUNT(*) AS count FROM qr_codes WHERE owner_key=?${qrId ? ' AND id=?' : ''} GROUP BY type`).all(...(qrId ? [req.ownerKey, qrId] : [req.ownerKey]));
     res.json({ totalScans: Number(totals.total), uniqueVisitors: Number(totals.unique_visitors), dynamicCount: Number(counts.find((row) => row.type === 'dynamic')?.count || 0), staticCount: Number(counts.find((row) => row.type === 'static')?.count || 0), series, devices: grouped('s.device'), referrers: grouped('s.referrer'), recent, topCodes, timezone: 'UTC', visitorMetric: 'Approximate daily unique visitors; repeat visitors on different days count again.' });
   });
   app.get('/api/settings', (req, res) => res.json({ ...config(), database: 'SQLite', sessionDays: SESSION_DAYS, analyticsTimezone: 'UTC' }));
   app.get('/api/export', (req, res) => {
-    const qrs = db.prepare('SELECT q.*, (SELECT COUNT(*) FROM scans WHERE qr_id=q.id) AS scan_count FROM qr_codes q ORDER BY created_at').all().map(mapQR);
+    const qrs = db.prepare('SELECT q.*, (SELECT COUNT(*) FROM scans WHERE qr_id=q.id) AS scan_count FROM qr_codes q WHERE q.owner_key=? ORDER BY created_at').all(req.ownerKey).map(mapQR);
     res.attachment(`qori-library-${new Date().toISOString().slice(0, 10)}.json`);
     res.json({ version: '1.0.0', exportedAt: new Date().toISOString(), publicBaseUrl, folders: folderRows().map(mapFolder), qrs, note: 'Library export only. Copy the stopped SQLite database for a full backup including scan history and your account.' });
   });
