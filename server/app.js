@@ -185,8 +185,8 @@ export function createApp(options = {}) {
 
   app.use('/api', requireAuth);
   const servePublicAsset = registerAssets(app, db);
-  const getRow = (id) => {
-    const row = db.prepare('SELECT q.*, (SELECT COUNT(*) FROM scans WHERE qr_id=q.id) AS scan_count FROM qr_codes q WHERE q.id = ? AND q.owner_key=?').get(id, req.ownerKey);
+  const getRow = (id, ownerKey) => {
+    const row = db.prepare('SELECT q.*, (SELECT COUNT(*) FROM scans WHERE qr_id=q.id) AS scan_count FROM qr_codes q WHERE q.id = ? AND q.owner_key=?').get(id, ownerKey);
     if (!row) throw new ValidationError('QR code not found.', 404);
     return row;
   };
@@ -200,12 +200,12 @@ export function createApp(options = {}) {
     encodedValue: row.encoded_value,
     shortUrl: row.type === 'dynamic' ? row.encoded_value : null,
   });
-  const validFolderId = (value) => {
+  const validFolderId = (value, ownerKey) => {
     if (value === null || value === undefined || value === '') return null;
-    if (typeof value !== 'string' || !db.prepare('SELECT id FROM folders WHERE id = ? AND owner_key=?').get(value, req.ownerKey)) throw new ValidationError('Choose an existing folder.');
+    if (typeof value !== 'string' || !db.prepare('SELECT id FROM folders WHERE id = ? AND owner_key=?').get(value, ownerKey)) throw new ValidationError('Choose an existing folder.');
     return value;
   };
-  const prepareQR = async (body, current = null, preview = false) => {
+  const prepareQR = async (body, current = null, preview = false, ownerKey) => {
     const input = body || {};
     const contentType = input.contentType ?? current?.contentType ?? 'url';
     const meta = getContentType(contentType);
@@ -215,7 +215,7 @@ export function createApp(options = {}) {
     if (meta.mode && type !== meta.mode) throw new ValidationError(`${meta.name} codes use ${meta.mode} mode.`);
     if (current && (type !== current.type || contentType !== current.contentType)) throw new ValidationError('A saved code’s type cannot change. Create a new code instead.');
     const name = preview ? String(input.name || 'Preview') : textField(input.name ?? current?.name, 'Name');
-    const resolved = resolveContent(contentType, input, { publicBaseUrl, current, db, ownerKey: req.ownerKey });
+    const resolved = resolveContent(contentType, input, { publicBaseUrl, current, db, ownerKey });
     const { destination, storageType, payload, assetId } = resolved;
     if (storageType === 'url') {
       const destinationUrl = new URL(destination);
@@ -247,7 +247,7 @@ export function createApp(options = {}) {
     const bgColor = validColor(input.bgColor ?? current?.bgColor, '#FFFFFF');
     validateColors(fgColor, bgColor);
     const logoDataUrl = Object.hasOwn(input, 'logoDataUrl') ? await validLogo(input.logoDataUrl) : current?.logoDataUrl ?? null;
-    const folderId = validFolderId(input.folderId === undefined ? current?.folderId : input.folderId);
+    const folderId = validFolderId(input.folderId === undefined ? current?.folderId : input.folderId, ownerKey);
     const active = input.active ?? current?.active ?? true;
     if (typeof active !== 'boolean') throw new ValidationError('Active must be true or false.');
     if (type === 'static' && !active) throw new ValidationError('A static QR code points directly to its content and cannot be paused.');
@@ -260,7 +260,7 @@ export function createApp(options = {}) {
     res.json({ qrs });
   });
   app.post('/api/qrs', async (req, res) => {
-    const qr = await prepareQR(req.body);
+    const qr = await prepareQR(req.body, null, false, req.ownerKey);
     const id = randomUUID(), now = new Date().toISOString();
     try {
       db.prepare('INSERT INTO qr_codes (id,name,type,content_type,category,payload_json,asset_id,destination,encoded_value,slug,fg_color,bg_color,logo_data_url,folder_id,active,created_at,updated_at,owner_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
@@ -269,45 +269,45 @@ export function createApp(options = {}) {
       if (String(error.message).includes('UNIQUE')) throw new ValidationError('This short-link slug is already in use.', 409);
       throw error;
     }
-    res.status(201).json({ qr: mapQR(getRow(id)) });
+    res.status(201).json({ qr: mapQR(getRow(id, req.ownerKey)) });
   });
   app.patch('/api/qrs/:id', async (req, res) => {
-    const current = mapQR(getRow(req.params.id));
-    const qr = await prepareQR(req.body, current);
+    const current = mapQR(getRow(req.params.id, req.ownerKey));
+    const qr = await prepareQR(req.body, current, false, req.ownerKey);
     db.prepare('UPDATE qr_codes SET name=?,destination=?,payload_json=?,asset_id=?,fg_color=?,bg_color=?,logo_data_url=?,folder_id=?,active=?,updated_at=? WHERE id=?')
       .run(qr.name, qr.destination, JSON.stringify(qr.payload), qr.assetId, qr.fgColor, qr.bgColor, qr.logoDataUrl, qr.folderId, Number(qr.active), new Date().toISOString(), current.id);
-    res.json({ qr: mapQR(getRow(current.id)) });
+    res.json({ qr: mapQR(getRow(current.id, req.ownerKey)) });
   });
   app.delete('/api/qrs/:id', (req, res) => {
-    getRow(req.params.id);
+    getRow(req.params.id, req.ownerKey);
     db.prepare('DELETE FROM qr_codes WHERE id = ?').run(req.params.id);
     res.json({ ok: true });
   });
   app.post('/api/preview', async (req, res) => {
     if (req.body?.id !== undefined && typeof req.body.id !== 'string') throw new ValidationError('Choose a valid saved QR code for the preview.');
-    const current = req.body?.id ? mapQR(getRow(req.body.id)) : null;
-    const qr = await prepareQR(req.body, current, true);
+    const current = req.body?.id ? mapQR(getRow(req.body.id, req.ownerKey)) : null;
+    const qr = await prepareQR(req.body, current, true, req.ownerKey);
     res.json({ svg: await renderQR(qr), encodedValue: qr.encodedValue });
   });
   app.get('/api/qrs/:id/download', async (req, res) => {
     const format = req.query.format || 'svg';
     if (!['svg', 'png'].includes(format)) throw new ValidationError('Download format must be svg or png.');
-    const qr = mapQR(getRow(req.params.id));
+    const qr = mapQR(getRow(req.params.id, req.ownerKey));
     const filename = qr.name.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'qori-code';
     res.type(format === 'svg' ? 'image/svg+xml' : 'image/png');
     res.attachment(`${filename}.${format}`);
     res.send(await renderQR(qr, format));
   });
 
-  const folderRows = () => db.prepare('SELECT f.*, (SELECT COUNT(*) FROM qr_codes WHERE folder_id = f.id) AS qr_count FROM folders f WHERE f.owner_key=? ORDER BY name COLLATE NOCASE').all(req.ownerKey);
+  const folderRows = (ownerKey) => db.prepare('SELECT f.*, (SELECT COUNT(*) FROM qr_codes WHERE folder_id = f.id) AS qr_count FROM folders f WHERE f.owner_key=? ORDER BY name COLLATE NOCASE').all(ownerKey);
   const mapFolder = (row) => ({ id: row.id, name: row.name, color: row.color, qrCount: Number(row.qr_count || 0) });
-  app.get('/api/folders', (req, res) => res.json({ folders: folderRows().map(mapFolder) }));
+  app.get('/api/folders', (req, res) => res.json({ folders: folderRows(req.ownerKey).map(mapFolder) }));
   app.post('/api/folders', (req, res) => {
     const name = textField(req.body?.name, 'Folder name', 60), color = validColor(req.body?.color, '#638A78');
     const id = randomUUID();
     try { db.prepare('INSERT INTO folders (id,name,color,created_at,owner_key) VALUES (?,?,?,?,?)').run(id, name, color, new Date().toISOString(), req.ownerKey); }
     catch (error) { if (String(error.message).includes('UNIQUE')) throw new ValidationError('A folder with this name already exists.', 409); throw error; }
-    res.status(201).json({ folder: mapFolder(folderRows().find((row) => row.id === id)) });
+    res.status(201).json({ folder: mapFolder(folderRows(req.ownerKey).find((row) => row.id === id)) });
   });
   app.patch('/api/folders/:id', (req, res) => {
     const current = db.prepare('SELECT * FROM folders WHERE id = ? AND owner_key=?').get(req.params.id, req.ownerKey);
@@ -315,7 +315,7 @@ export function createApp(options = {}) {
     const name = textField(req.body?.name ?? current.name, 'Folder name', 60), color = validColor(req.body?.color, current.color);
     try { db.prepare('UPDATE folders SET name=?,color=? WHERE id=?').run(name, color, current.id); }
     catch (error) { if (String(error.message).includes('UNIQUE')) throw new ValidationError('A folder with this name already exists.', 409); throw error; }
-    res.json({ folder: mapFolder(folderRows().find((row) => row.id === current.id)) });
+    res.json({ folder: mapFolder(folderRows(req.ownerKey).find((row) => row.id === current.id)) });
   });
   app.delete('/api/folders/:id', (req, res) => {
     const current = db.prepare('SELECT id FROM folders WHERE id = ? AND owner_key=?').get(req.params.id, req.ownerKey);
@@ -329,7 +329,7 @@ export function createApp(options = {}) {
     if (![7, 30, 90].includes(days)) throw new ValidationError('Choose a 7, 30, or 90 day analytics window.');
     const qrId = req.query.qrId;
     if (qrId && typeof qrId !== 'string') throw new ValidationError('Choose a valid QR code.');
-    if (qrId) getRow(qrId);
+    if (qrId) getRow(qrId, req.ownerKey);
     const today = new Date();
     const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - days + 1));
     const startIso = start.toISOString();
@@ -352,7 +352,7 @@ export function createApp(options = {}) {
   app.get('/api/export', (req, res) => {
     const qrs = db.prepare('SELECT q.*, (SELECT COUNT(*) FROM scans WHERE qr_id=q.id) AS scan_count FROM qr_codes q WHERE q.owner_key=? ORDER BY created_at').all(req.ownerKey).map(mapQR);
     res.attachment(`qori-library-${new Date().toISOString().slice(0, 10)}.json`);
-    res.json({ version: '1.0.0', exportedAt: new Date().toISOString(), publicBaseUrl, folders: folderRows().map(mapFolder), qrs, note: 'Library export only. Copy the stopped SQLite database for a full backup including scan history and your account.' });
+    res.json({ version: '1.0.0', exportedAt: new Date().toISOString(), publicBaseUrl, folders: folderRows(req.ownerKey).map(mapFolder), qrs, note: 'Library export only. Copy the stopped SQLite database for a full backup including scan history and your account.' });
   });
   app.use('/api', (req, res) => res.status(404).json({ error: 'API endpoint not found.' }));
 
