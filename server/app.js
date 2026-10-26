@@ -71,12 +71,17 @@ export function createApp(options = {}) {
   if (!Number.isInteger(proxyHops) || proxyHops < 0 || proxyHops > 5) throw new Error('TRUST_PROXY must be an integer from 0 to 5.');
   const databaseUrl = options.databaseUrl ?? process.env.DATABASE_URL;
   const db = databaseUrl ? openPostgresDatabase(databaseUrl) : openDatabase(dbPath);
+  // Preserve fail-fast setup checks for the existing synchronous SQLite mode.
+  if (!databaseUrl && environment === 'production' && !saasMode && !setupToken && !db.prepare('SELECT id FROM owner WHERE id = 1').get()) {
+    db.close();
+    throw new Error('Set a strong SETUP_TOKEN before first production startup. Remove it after creating your owner account.');
+  }
   let analyticsSecret;
   const ready = (async () => {
     await db.ready;
     await db.prepare("UPDATE qr_codes SET encoded_value = CASE WHEN type = 'dynamic' THEN ? || '/r/' || slug ELSE destination END WHERE encoded_value IS NULL")
       .run(publicBaseUrl);
-    if (environment === 'production' && !saasMode && !setupToken && !await db.prepare('SELECT id FROM owner WHERE id = 1').get()) {
+    if (databaseUrl && environment === 'production' && !saasMode && !setupToken && !await db.prepare('SELECT id FROM owner WHERE id = 1').get()) {
       await db.close();
       throw new Error('Set a strong SETUP_TOKEN before first production startup. Remove it after creating your owner account.');
     }
@@ -188,7 +193,7 @@ export function createApp(options = {}) {
       }
       return res.status(201).json({ requiresVerification: true, message: 'Check your email for the verification link.' });
     }
-    startSession(res, user);
+    await startSession(res, user);
     res.status(201).json({ user });
   });
   app.post('/api/auth/verify-email', limitAuth, async (req, res) => {
@@ -272,7 +277,7 @@ export function createApp(options = {}) {
       throw error;
     }
     const user = { id: 1, name, email };
-    startSession(res, user);
+    await startSession(res, user);
     res.status(201).json({ user });
   });
   app.post('/api/auth/login', limitAuth, async (req, res) => {
@@ -286,7 +291,7 @@ export function createApp(options = {}) {
     const valid = await verifyPassword(password, stored);
     if (!candidate || !valid) throw new ValidationError('Email or password is incorrect.', 401);
     if (verificationRequired && account && !account.verified_at) throw new ValidationError('Verify your email before signing in.', 403);
-    startSession(res, candidate);
+    await startSession(res, candidate);
     attempts.delete(req.ip || 'unknown');
     res.json({ user: cleanUser(candidate) });
   });
