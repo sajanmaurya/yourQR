@@ -9,7 +9,16 @@ import { randomBytes } from 'node:crypto';
 export function openNeonHttpDatabase(connectionString, options = {}) {
   if (!connectionString) throw new Error('DATABASE_URL is required for Neon.');
   const sql = options.sql || neon(connectionString, { fullResults: true });
-  const execute = (source, args) => sql.query(postgresSQL(source), args, { fullResults: true });
+  const inspectNetworkFailure = (error) => {
+    // Never log DATABASE_URL, SQL parameters, request URLs, or customer data.
+    let cause = error, details = [];
+    for (let level = 0; cause && level < 3; level++, cause = cause.cause) {
+      details.push({ type: cause.name || 'Error', code: cause.code || null, message: String(cause.message || '').slice(0, 180) });
+    }
+    console.error('Qori Neon HTTPS error diagnostics:', JSON.stringify(details));
+    throw error;
+  };
+  const execute = (source, args) => sql.query(postgresSQL(source), args, { fullResults: true }).catch(inspectNetworkFailure);
   const statement = (source) => ({
     async get(...args) { const result = await execute(source, args); return result.rows?.[0]; },
     async all(...args) { const result = await execute(source, args); return result.rows || []; },
