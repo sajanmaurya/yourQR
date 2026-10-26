@@ -23,6 +23,8 @@
     "helmet": "^8.1.0",
     "pg": "^8.16.3",
     "@neondatabase/serverless": "^1.2.0",
+    "@aws-sdk/client-s3": "^3.1156.0",
+    "@aws-sdk/s3-request-presigner": "^3.1156.0",
     "lucide-react": "^0.468.0",
     "qrcode": "^1.5.4",
     "react": "^19.1.0",

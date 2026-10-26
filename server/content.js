@@ -1,5 +1,6 @@
 import { contentType } from '../shared/content-types.js';
 import { ValidationError, validDestination } from './qr.js';
+import { r2StoredKey } from './r2.js';
 
 function field(payload, key, label, { optional = false, max = 300, preserve = false } = {}) {
   const raw = payload?.[key];
@@ -38,8 +39,9 @@ export async function resolveContent(category, input, context) {
   if (meta.file) {
     const assetId = input.assetId ?? current?.assetId;
     if (typeof assetId !== 'string') throw new ValidationError(`Upload a ${meta.name} file first.`);
-    const asset = await db.prepare('SELECT id,kind FROM assets WHERE id=? AND owner_key=?').get(assetId, ownerKey);
+    const asset = await db.prepare('SELECT id,kind,bytes FROM assets WHERE id=? AND owner_key=?').get(assetId, ownerKey);
     if (!asset || asset.kind !== category) throw new ValidationError(`Choose an uploaded ${meta.name} file.`);
+    if (r2StoredKey(asset.bytes)?.pending) throw new ValidationError('Wait until your Cloudflare upload completes.');
     const origin = current ? new URL(current.encodedValue).origin : publicBaseUrl;
     return { destination: `${origin}/files/${asset.id}`, storageType: 'url', payload: {}, assetId };
   }
