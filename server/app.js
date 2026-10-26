@@ -8,6 +8,7 @@ import { isLanAddressStale } from '../shared/network.js';
 import { randomBytes, randomUUID, createHash, createHmac, timingSafeEqual } from 'node:crypto';
 import { openDatabase, hashPassword, verifyPassword } from './database.js';
 import { openPostgresDatabase } from './postgres.js';
+import { openNeonHttpDatabase } from './neon-http.js';
 import { contentType as getContentType } from '../shared/content-types.js';
 import { resolveContent } from './content.js';
 import { registerAssets, mapAsset } from './assets.js';
@@ -70,7 +71,12 @@ export function createApp(options = {}) {
   const proxyHops = Number(options.trustProxy ?? process.env.TRUST_PROXY ?? 0);
   if (!Number.isInteger(proxyHops) || proxyHops < 0 || proxyHops > 5) throw new Error('TRUST_PROXY must be an integer from 0 to 5.');
   const databaseUrl = options.databaseUrl ?? process.env.DATABASE_URL;
-  const db = databaseUrl ? openPostgresDatabase(databaseUrl, { maxConnections: process.env.VERCEL === '1' ? 2 : 10 }) : openDatabase(dbPath);
+  // Neon HTTP is designed for ephemeral serverless functions. Locally, retain
+  // node-postgres for existing self-hosted deployments and migration tests.
+  const useNeonHttp = Boolean(databaseUrl && process.env.VERCEL === '1' && /\\.neon\\.tech(?::\\d+)?\\//.test(databaseUrl));
+  const db = databaseUrl
+    ? (useNeonHttp ? openNeonHttpDatabase(databaseUrl) : openPostgresDatabase(databaseUrl, { maxConnections: process.env.VERCEL === '1' ? 2 : 10 }))
+    : openDatabase(dbPath);
   // Preserve fail-fast setup checks for the existing synchronous SQLite mode.
   if (!databaseUrl && environment === 'production' && !saasMode && !setupToken && !db.prepare('SELECT id FROM owner WHERE id = 1').get()) {
     db.close();

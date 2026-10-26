@@ -18,4 +18,4 @@ assert.ok(existsSync('dist/index.html'), 'Local Node deployment must retain dist
 console.log('Vercel static assets and Express routing configuration look consistent.');
 
 assert.equal(config.functions['index.js'].regions?.[0], 'iad1', 'Backend must run near Neon US East');
-assert.ok(config.rewrites?.some(rule => rule.source === '/' && rule.destination === '/index.html'), 'Homepage should be served by CDN, not require the DB');
+assert.match(config.functions['index.js'].includeFiles, /public\\/index\\.html/, 'Homepage must be included in the function bundle');
