@@ -73,6 +73,7 @@ export default function App() {
     try { await api('/auth/logout', { method: 'POST' }); setSession(previous => ({ ...previous, authenticated: false, setupRequired: false })); setQrs([]); setFolders([]); setPage('codes'); setFolderId(''); setMobileOpen(false); }
     catch (error) { notify(error.message, true); }
   }
+  if (new window.URLSearchParams(window.location.search).has('reset')) return <PasswordReset />;
   if (new window.URLSearchParams(window.location.search).has('verify')) return <EmailVerification />;
   if (!session) return <div className="boot-screen"><Brand /><div>{sessionError ? <><InlineError>{sessionError}</InlineError><button type="button" className="button primary" onClick={loadSession}>Try again</button></> : <Spinner text="Opening your workspace…" />}</div></div>;
   if (!session.authenticated) return <Auth session={session} onAuthenticated={loadSession} />;
@@ -113,6 +114,20 @@ export default function App() {
   </div>;
 }
 
+function PasswordReset() {
+  const token = new window.URLSearchParams(window.location.search).get('reset') || '';
+  const [password, setPassword] = useState('');
+  const [status, setStatus] = useState('');
+  const [busy, setBusy] = useState(false);
+  const confirm = async event => {
+    event.preventDefault(); setBusy(true);
+    try { await api('/auth/reset-password', { method: 'POST', body: { token, password } }); setStatus('Password updated. Existing sessions have been signed out.'); setPassword(''); }
+    catch (error) { setStatus(error.message); }
+    finally { setBusy(false); }
+  };
+  return <main className="boot-screen"><Brand /><h2>Reset your password</h2><p>Choose a new password for your Qori account.</p><form onSubmit={confirm}><div className="field"><label htmlFor="reset-password">New password</label><input id="reset-password" type="password" autoComplete="new-password" minLength={12} maxLength={256} value={password} onChange={event => setPassword(event.target.value)} required /></div><p role="status">{status}</p><button type="submit" className="button primary" disabled={busy || !token || status.startsWith('Password updated')}>Update password</button></form><a href="/" className="text-button">Return to sign in</a></main>;
+}
+
 function EmailVerification() {
   const token = new window.URLSearchParams(window.location.search).get('verify') || '';
   const [status, setStatus] = useState('');
@@ -133,6 +148,7 @@ function Auth({ session, onAuthenticated }) {
   const publicRegistration = Boolean(session.config?.registrationEnabled);
   const [creating, setCreating] = useState(false);
   const [checkInbox, setCheckInbox] = useState(false);
+  const [resetRequested, setResetRequested] = useState(false);
   const signingUp = setup || (publicRegistration && creating);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -140,6 +156,13 @@ function Auth({ session, onAuthenticated }) {
   const [token, setToken] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  async function requestReset() {
+    if (!email.trim()) { setError('Enter your email address first.'); return; }
+    setBusy(true); setError('');
+    try { await api('/auth/request-password-reset', { method: 'POST', body: { email: email.trim() } }); setResetRequested(true); }
+    catch (err) { setError(err.message); }
+    finally { setBusy(false); }
+  }
   async function submit(event) {
     event.preventDefault(); setBusy(true); setError('');
     try { const result = await api(setup ? '/auth/setup' : signingUp ? '/auth/register' : '/auth/login', { method: 'POST', body: signingUp ? { name: name.trim(), email: email.trim(), password, ...(setup ? { setupToken: token } : {}) } : { email: email.trim(), password } }); if (result.requiresVerification) { setCheckInbox(true); setPassword(''); } else await onAuthenticated(); }
@@ -147,7 +170,7 @@ function Auth({ session, onAuthenticated }) {
     finally { setBusy(false); }
   }
   return <main className="auth-shell"><section className="auth-story"><Brand light /><div className="auth-story-content"><span className="auth-kicker"><span />A SMALL CODE. A BIG CONNECTION.</span><h1>Good things<br />start with<br />a <span>little square.</span></h1><p>Your links, beautifully connected.<br />Create, organize, and keep them growing.</p><div className="auth-art" aria-hidden="true"><div className="art-orbit orbit-one" /><div className="art-orbit orbit-two" /><div className="art-small-square"><ArrowUpRight size={23} /></div><div className="art-code"><div className="art-grid"><i /><i /><i /><i /><i /><i /><i /><i /><i /></div><span>Endless possibilities.</span></div><div className="art-label"><span className="art-label-icon"><Link2 size={18} /></span>One code. Your world.</div></div></div><div className="auth-story-footer"><ShieldCheck size={16} /><span>Self-hosted. Personal. Entirely yours.</span></div></section>
-    <section className="auth-form-side"><div className="auth-mobile-brand"><Brand /></div><div className="auth-form-box"><span className="auth-welcome-icon"><QrCode size={25} /></span><span className="eyebrow">YOUR QR WORKSPACE</span><h2>{signingUp ? 'Create your workspace.' : 'Welcome back.'}</h2><p>{signingUp ? 'Create your personal QR workspace and get started.' : 'Sign in and pick up where your links left off.'}</p>{checkInbox && <p role="status">Check your email for a verification link. Verify your address before signing in.</p>}<form onSubmit={submit}><InlineError>{error}</InlineError>{signingUp && <div className="field"><label htmlFor="owner-name">Your name</label><input id="owner-name" autoComplete="name" value={name} onChange={event => setName(event.target.value)} placeholder="Alex Taylor" maxLength={80} required autoFocus /></div>}<div className="field"><label htmlFor="owner-email">Email address</label><input id="owner-email" type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} placeholder="you@example.com" required autoFocus={!signingUp} /></div><div className="field"><label htmlFor="owner-password">Password</label><input id="owner-password" type="password" autoComplete={signingUp ? 'new-password' : 'current-password'} value={password} onChange={event => setPassword(event.target.value)} placeholder={signingUp ? 'Choose a strong password' : 'Enter your password'} minLength={signingUp ? 12 : undefined} required />{signingUp && <small>At least 12 characters. Make it something only you know.</small>}</div>{setup && session.config?.setupTokenRequired && <div className="field"><label htmlFor="setup-token">Setup token</label><input id="setup-token" type="password" value={token} onChange={event => setToken(event.target.value)} autoComplete="off" required /><small>The SETUP_TOKEN configured on your server.</small></div>}<button type="submit" className="button primary auth-submit" disabled={busy}>{busy ? <Spinner text={signingUp ? 'Creating workspace…' : 'Signing in…'} /> : <>{signingUp ? 'Create my workspace' : 'Sign in to Qori'}<ArrowRight size={18} /></>}</button></form>{publicRegistration && <button type="button" className="text-button" style={{ marginTop: 18 }} onClick={() => { setCreating(!creating); setCheckInbox(false); setError(''); setPassword(''); }}>{creating ? 'Already have an account? Sign in' : 'New here? Create an account'}</button>}<div className="auth-private"><LockKeyhole size={15} /><span>{publicRegistration ? 'Your workspace data is separated from other accounts.' : setup ? 'One owner. No public registration. No subscriptions.' : 'A private space for your personal links.'}</span></div></div><span className="auth-bottom">YOUR CODES. YOUR CONTROL.</span></section></main>;
+    <section className="auth-form-side"><div className="auth-mobile-brand"><Brand /></div><div className="auth-form-box"><span className="auth-welcome-icon"><QrCode size={25} /></span><span className="eyebrow">YOUR QR WORKSPACE</span><h2>{signingUp ? 'Create your workspace.' : 'Welcome back.'}</h2><p>{signingUp ? 'Create your personal QR workspace and get started.' : 'Sign in and pick up where your links left off.'}</p>{checkInbox && <p role="status">Check your email for a verification link. Verify your address before signing in.</p>}{resetRequested && <p role="status">If this email has an account, a password-reset link has been sent.</p>}<form onSubmit={submit}><InlineError>{error}</InlineError>{signingUp && <div className="field"><label htmlFor="owner-name">Your name</label><input id="owner-name" autoComplete="name" value={name} onChange={event => setName(event.target.value)} placeholder="Alex Taylor" maxLength={80} required autoFocus /></div>}<div className="field"><label htmlFor="owner-email">Email address</label><input id="owner-email" type="email" autoComplete="username" value={email} onChange={event => setEmail(event.target.value)} placeholder="you@example.com" required autoFocus={!signingUp} /></div><div className="field"><label htmlFor="owner-password">Password</label><input id="owner-password" type="password" autoComplete={signingUp ? 'new-password' : 'current-password'} value={password} onChange={event => setPassword(event.target.value)} placeholder={signingUp ? 'Choose a strong password' : 'Enter your password'} minLength={signingUp ? 12 : undefined} required />{signingUp && <small>At least 12 characters. Make it something only you know.</small>}</div>{setup && session.config?.setupTokenRequired && <div className="field"><label htmlFor="setup-token">Setup token</label><input id="setup-token" type="password" value={token} onChange={event => setToken(event.target.value)} autoComplete="off" required /><small>The SETUP_TOKEN configured on your server.</small></div>}<button type="submit" className="button primary auth-submit" disabled={busy}>{busy ? <Spinner text={signingUp ? 'Creating workspace…' : 'Signing in…'} /> : <>{signingUp ? 'Create my workspace' : 'Sign in to Qori'}<ArrowRight size={18} /></>}</button></form>{publicRegistration && !signingUp && <button type="button" className="text-button" style={{ marginTop: 14, display: 'block' }} onClick={requestReset} disabled={busy}>Forgot password?</button>}{publicRegistration && <button type="button" className="text-button" style={{ marginTop: 18 }} onClick={() => { setCreating(!creating); setCheckInbox(false); setError(''); setPassword(''); }}>{creating ? 'Already have an account? Sign in' : 'New here? Create an account'}</button>}<div className="auth-private"><LockKeyhole size={15} /><span>{publicRegistration ? 'Your workspace data is separated from other accounts.' : setup ? 'One owner. No public registration. No subscriptions.' : 'A private space for your personal links.'}</span></div></div><span className="auth-bottom">YOUR CODES. YOUR CONTROL.</span></section></main>;
 }
 
 function Codes({ qrs, folders, currentFolder, dataLoading, onCreate, onHelp, onEditFolder, ...actions }) {
