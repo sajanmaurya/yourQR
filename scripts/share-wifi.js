@@ -8,6 +8,10 @@ import { openDatabase } from '../server/database.js';
 import { addressScope } from '../shared/network.js';
 
 // Run with the app stopped. Rewrites loopback and this app's previous LAN origin only.
+if (process.env.DATABASE_URL) {
+  console.error('Wi-Fi sharing currently edits SQLite URLs only. Do not use this utility for a PostgreSQL-backed Qori.');
+  process.exit(1);
+}
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const address = process.argv[2];
 const localAddresses = Object.values(networkInterfaces()).flat().filter(Boolean).filter(item => item.family === 'IPv4' && !item.internal).map(item => item.address);

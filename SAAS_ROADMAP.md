@@ -41,3 +41,13 @@ Implemented on this branch:
 `SAAS_MODE=true` remains an experimental flag. Development/test deliberately skip mandatory verification unless `requireEmailVerification` is enabled in test or `NODE_ENV=production`. Real production SaaS requires `RESEND_API_KEY`, `MAIL_FROM`, and a permanent HTTPS `PUBLIC_BASE_URL`.
 
 **Not implemented yet:** Express still runs on SQLite. Importing PostgreSQL data **does not switch API traffic**. No PostgreSQL application adapter/cutover, production mail delivery verification, managed database account, deployment, R2 storage, or billing yet. Never claim this is launched or ready for public customer data.
+
+## Phase 2B: PostgreSQL runtime implemented and tested
+
+- Node's `pg` pool is used when `DATABASE_URL` is configured. Without that variable, SQLite remains the default.
+- The original Express API has been adapted to async database operations: owner/account auth, verification/reset tokens, workspaces, QR and asset creation/editing, dynamic redirects, folders, scan aggregation, and exports.
+- PostgreSQL initial schema is provisioned during server startup. Signup creates an account-owned workspace and membership atomically.
+- GitHub CI performs independent legacy SQLite tests, production frontend lint/build, PostgreSQL 16 snapshot import, empty database runtime CRUD/redirect tests, and post-import continuity tests.
+- Keep the same URL origin during cutover and freeze old writes before taking the final copy. Refer to `db/postgres/README.md` for rollback details.
+
+**Still not a public launch:** no managed Postgres deployment, CDN/short-link uptime guarantees, email delivery verification, object storage migration, rate limiting across replicas, or paid billing.

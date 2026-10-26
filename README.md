@@ -297,3 +297,7 @@ The `saas-development` branch introduces self-serve user accounts and tenant-sco
 - Safe SQLite snapshot importer and prerequisite commands: [db/postgres/README.md](db/postgres/README.md).
 - In a real production SaaS, registration requires email verification and uses the Resend REST API. Configure `RESEND_API_KEY` and `MAIL_FROM` privately on the server and use a stable HTTPS `PUBLIC_BASE_URL`. Password recovery links expire after 30 minutes and revoke account sessions.
 - The PostgreSQL importer is for testing the move of existing data. **The current runtime remains SQLite** until the backend database adapter is migrated. Do not switch traffic or remove SQLite data after import.
+
+### PostgreSQL-backed Qori (Phase 2B)
+
+Set an untracked `DATABASE_URL` and keep `PUBLIC_BASE_URL` at your stable origin to run the API with PostgreSQL. All API/redirect routes use the selected database; the SQLite code path remains supported when `DATABASE_URL` is unset. Both are exercised by CI. Consult [the PostgreSQL cutover and rollback runbook](db/postgres/README.md) before migrating existing QR links or data. No production deployment has been performed.
