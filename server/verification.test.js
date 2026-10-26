@@ -43,3 +43,50 @@ test('verification is one-time, required before login, and prevents legacy setup
   assert.match(login.cookie, /HttpOnly/);
   assert.equal((await post('/api/auth/resend-verification', { email: 'unknown@example.com' })).status, 200);
 });
+
+test('password recovery is private, expires and invalidates active sessions', async t => {
+  const sent = [];
+  const app = createApp({
+    dbPath: ':memory:', publicBaseUrl: 'http://localhost:8787',
+    saasMode: true, environment: 'test', secureCookie: false,
+    requireEmailVerification: true,
+    emailSender: async email => { sent.push(email); },
+  });
+  const server = await new Promise(resolve => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
+  t.after(async () => { await new Promise(resolve => server.close(resolve)); app.locals.close(); });
+  const origin = 'http://127.0.0.1:' + server.address().port;
+  const call = async (path, body, cookie) => {
+    const response = await fetch(origin + path, {
+      method: body ? 'POST' : 'GET',
+      headers: { ...(cookie ? { cookie } : {}), ...(body ? { 'content-type': 'application/json' } : {}) },
+      ...(body ? { body: JSON.stringify(body) } : {}),
+    });
+    return { status: response.status, body: await response.json(), cookie: response.headers.get('set-cookie')?.split(';')[0] };
+  };
+  const account = { name: 'Taylor', email: 'taylor@example.com', password: 'old-long-password-12345' };
+  assert.equal((await call('/api/auth/register', account)).status, 201);
+  const verify = new URL(sent[0].url).searchParams.get('verify');
+  assert.equal((await call('/api/auth/verify-email', { token: verify })).status, 200);
+  const loggedIn = await call('/api/auth/login', account);
+  assert.equal(loggedIn.status, 200);
+  assert.equal((await call('/api/qrs', null, loggedIn.cookie)).status, 200);
+  assert.equal((await call('/api/auth/request-password-reset', { email: 'unknown@example.com' })).status, 200);
+  assert.equal(sent.length, 1);
+  const request = await call('/api/auth/request-password-reset', { email: account.email });
+  assert.equal(request.status, 200);
+  assert.equal(sent.length, 2);
+  assert.equal(sent[1].purpose, 'reset');
+  assert.equal(JSON.stringify(request.body).includes('token'), false);
+  const first = new URL(sent[1].url).searchParams.get('reset');
+  assert.equal((await call('/api/auth/reset-password', { token: first, password: 'short' })).status, 400);
+  app.locals.db.prepare('UPDATE password_resets SET expires_at=0').run();
+  assert.equal((await call('/api/auth/reset-password', { token: first, password: 'new-long-password-12345' })).status, 400);
+  assert.equal((await call('/api/auth/request-password-reset', { email: account.email })).status, 200);
+  const second = new URL(sent[2].url).searchParams.get('reset');
+  const reset = await call('/api/auth/reset-password', { token: second, password: 'new-long-password-12345' });
+  assert.equal(reset.status, 200);
+  assert.equal((await call('/api/auth/reset-password', { token: second, password: 'other-long-password-12345' })).status, 400);
+  assert.equal((await call('/api/qrs', null, loggedIn.cookie)).status, 401);
+  assert.equal((await call('/api/auth/login', account)).status, 401);
+  assert.equal((await call('/api/auth/login', { email: account.email, password: 'new-long-password-12345' })).status, 200);
+});
