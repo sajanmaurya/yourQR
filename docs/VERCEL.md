@@ -27,3 +27,7 @@ GitHub CI executes `npm test`, `npm run build` (SQLite regression suite), Postgr
 ## Free vs commercial
 
 Vercel's free Hobby tier is for **personal/non-commercial** use. Plan for a paid, commercially permitted Vercel tier for the customer-facing SaaS. Database quotas, function invocation billing and bandwidth apply. Do not publish Qori as a paid SaaS on Hobby.
+
+## Blank screen / frontend asset diagnostics
+
+When the HTML title loads but the page is entirely blank, inspect Network for the Vite JS and CSS URLs under `/assets/`. Qori's Express entrypoint has a fallback route that serves the hashed `dist/assets` files directly with JavaScript/CSS MIME types, and `vercel.json` includes those files in the Function bundle. Vercel's `public/` remains the preferred static CDN location. A 9-second inline fallback replaces an otherwise completely white screen when React fails to mount. Keep Function and CDN artifacts in sync after changing the Vite build.

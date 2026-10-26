@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
 
 const config = JSON.parse(readFileSync('vercel.json', 'utf8'));
@@ -19,3 +19,11 @@ console.log('Vercel static assets and Express routing configuration look consist
 
 assert.equal(config.functions['index.js'].regions?.[0], 'iad1', 'Backend must run near Neon US East');
 assert.match(config.functions['index.js'].includeFiles, /public\/index\.html/, 'Homepage must be included in the function bundle');
+assert.match(config.functions['index.js'].includeFiles, /dist\/assets/, 'Compiled JS/CSS must be available in the Function fallback');
+const entry = readFileSync('index.js', 'utf8');
+assert.match(entry, /app\.get\('\/assets\/:filename'/, 'The Express entrypoint must serve compiled JS and CSS as a fallback');
+for (const file of readdirSync('dist/assets')) {
+  if (!/\.(?:js|css)$/.test(file)) continue;
+  assert.ok(existsSync(join('dist', 'assets', file)), 'Asset missing from the Function bundle: ' + file);
+}
+

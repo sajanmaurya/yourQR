@@ -37,6 +37,21 @@ if (configurationError) {
         res.set('Cache-Control', 'no-store').type('html').send(html);
       } catch (error) { next(error); }
     });
+    // If Vercel did not register post-build Vite bundles as CDN static files,
+    // serve the versioned JS/CSS from the Function bundle. Without them, React
+    // never mounts and visitors see only a white page.
+    app.get('/assets/:filename', async (req, res, next) => {
+      const filename = req.params.filename;
+      if (!/^[A-Za-z0-9_-]+\.(?:js|css)$/.test(filename)) return res.status(404).type('text/plain').send('Asset not found');
+      try {
+        const body = await readFile(new URL('./dist/assets/' + filename, import.meta.url));
+        res.set('Cache-Control', 'public, max-age=31536000, immutable');
+        res.type(filename.endsWith('.js') ? 'application/javascript' : 'text/css').send(body);
+      } catch (error) {
+        if (error.code === 'ENOENT') return res.status(404).type('text/plain').send('Asset not found');
+        next(error);
+      }
+    });
     app.get('/favicon.ico', (_req, res) => res.status(204).end());
   }
   app.use(createApp({ distPath: '__vercel_static_assets_are_on_cdn__' }));

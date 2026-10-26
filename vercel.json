@@ -4,7 +4,7 @@
   "buildCommand": "npm run build:vercel",
   "functions": {
     "index.js": {
-      "includeFiles": "{db/postgres/schema.sql,public/index.html}",
+      "includeFiles": "{db/postgres/schema.sql,public/index.html,public/assets/**,dist/assets/**}",
       "regions": [
         "iad1"
       ],
