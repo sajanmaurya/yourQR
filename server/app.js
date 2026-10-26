@@ -46,14 +46,14 @@ export function createApp(options = {}) {
   const environment = options.environment ?? process.env.NODE_ENV ?? 'development';
   const saasMode = options.saasMode ?? (process.env.SAAS_MODE === 'true');
   const verificationRequired = saasMode && (environment === 'production' || options.requireEmailVerification === true);
-  const emailSender = options.emailSender || (async ({ to, url }) => {
+  const emailSender = options.emailSender || (async ({ to, url, purpose = 'verify' }) => {
     if (!process.env.RESEND_API_KEY || !process.env.MAIL_FROM) throw new Error('Email service is not configured.');
     const response = await fetch('https://api.resend.com/emails', {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: process.env.MAIL_FROM, to: [to], subject: 'Verify your Qori email',
-        text: 'Verify your email to activate Qori: ' + url + '\n\nThis link expires in 24 hours.',
+        from: process.env.MAIL_FROM, to: [to], subject: purpose === 'reset' ? 'Reset your Qori password' : 'Verify your Qori email',
+        text: purpose === 'reset' ? 'Reset your Qori password using this link: ' + url + '\n\nThis link expires in 30 minutes.' : 'Verify your email to activate Qori: ' + url + '\n\nThis link expires in 24 hours.',
       }),
     });
     if (!response.ok) throw new Error('Email provider rejected verification request.');
@@ -195,6 +195,43 @@ export function createApp(options = {}) {
       }
     }
     res.json({ message: 'If verification is required, a fresh link has been sent.' });
+  });
+  app.post('/api/auth/request-password-reset', limitAuth, async (req, res) => {
+    if (!saasMode) throw new ValidationError('Account recovery is disabled.', 403);
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
+    const result = { message: 'If the account exists, an email with a reset link has been sent.' };
+    if (!email || email.length > 254) return res.json(result);
+    const account = db.prepare('SELECT id,verified_at FROM accounts WHERE email=?').get(email);
+    if (account && (!verificationRequired || account.verified_at)) {
+      const token = randomBytes(32).toString('hex');
+      db.prepare('INSERT INTO password_resets(account_id,token_hash,expires_at) VALUES(?,?,?) ON CONFLICT(account_id) DO UPDATE SET token_hash=excluded.token_hash,expires_at=excluded.expires_at')
+        .run(account.id, tokenHash(token), Date.now() + 30 * 60000);
+      try { await emailSender({ to: email, url: publicBaseUrl + '/?reset=' + token, purpose: 'reset' }); }
+      catch {
+        db.prepare('DELETE FROM password_resets WHERE account_id=?').run(account.id);
+        // Do not disclose whether a particular address belongs to an account.
+        console.error('Qori password reset email delivery failed.');
+      }
+    }
+    res.json(result);
+  });
+  app.post('/api/auth/reset-password', limitAuth, async (req, res) => {
+    if (!saasMode) throw new ValidationError('Account recovery is disabled.', 403);
+    const token = req.body?.token;
+    const password = req.body?.password;
+    if (typeof token !== 'string' || !/^[a-f0-9]{64}$/.test(token)) throw new ValidationError('Invalid or expired password-reset link.');
+    if (typeof password !== 'string' || password.length < 12 || password.length > 256) throw new ValidationError('Choose a password with 12–256 characters.');
+    const record = db.prepare('SELECT account_id FROM password_resets WHERE token_hash=? AND expires_at>?').get(tokenHash(token), Date.now());
+    if (!record) throw new ValidationError('Invalid or expired password-reset link.');
+    const hashed = await hashPassword(password);
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      db.prepare('UPDATE accounts SET password_hash=? WHERE id=?').run(hashed, record.account_id);
+      db.prepare('DELETE FROM account_sessions WHERE account_id=?').run(record.account_id);
+      db.prepare('DELETE FROM password_resets WHERE account_id=?').run(record.account_id);
+      db.exec('COMMIT');
+    } catch (error) { db.exec('ROLLBACK'); throw error; }
+    res.json({ updated: true });
   });
   app.post('/api/auth/setup', limitAuth, async (req, res) => {
     if (saasMode) throw new ValidationError('Legacy owner setup is disabled in SaaS mode.', 403);
