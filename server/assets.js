@@ -61,14 +61,14 @@ export function registerAssets(app, db) {
       else throw new ValidationError('Use an MP3, WAV, or Ogg audio file.');
     }
     const id = randomUUID(), createdAt = new Date().toISOString();
-    db.prepare('INSERT INTO assets(id,kind,name,mime,size,bytes,created_at,owner_key) VALUES(?,?,?,?,?,?,?,?)').run(id, kind, name, mime, bytes.length, bytes, createdAt, req.ownerKey);
+    await db.prepare('INSERT INTO assets(id,kind,name,mime,size,bytes,created_at,owner_key) VALUES(?,?,?,?,?,?,?,?)').run(id, kind, name, mime, bytes.length, bytes, createdAt, req.ownerKey);
     // Discard abandoned uploads after a day. Referenced files are never collected.
-    db.prepare("DELETE FROM assets WHERE created_at < ? AND id NOT IN (SELECT asset_id FROM qr_codes WHERE asset_id IS NOT NULL)").run(new Date(Date.now() - 86400000).toISOString());
+    await db.prepare("DELETE FROM assets WHERE created_at < ? AND id NOT IN (SELECT asset_id FROM qr_codes WHERE asset_id IS NOT NULL)").run(new Date(Date.now() - 86400000).toISOString());
     res.status(201).json({ asset: { id, kind, name, mime, size: bytes.length, createdAt } });
   });
-  app.delete('/api/assets/:id', (req, res) => {
-    if (db.prepare('SELECT id FROM qr_codes WHERE asset_id=? AND owner_key=?').get(req.params.id, req.ownerKey)) throw new ValidationError('This file is used by a QR code. Replace or delete that code first.', 409);
-    db.prepare('DELETE FROM assets WHERE id=? AND owner_key=?').run(req.params.id, req.ownerKey); res.json({ ok: true });
+  app.delete('/api/assets/:id', async (req, res) => {
+    if (await db.prepare('SELECT id FROM qr_codes WHERE asset_id=? AND owner_key=?').get(req.params.id, req.ownerKey)) throw new ValidationError('This file is used by a QR code. Replace or delete that code first.', 409);
+    await db.prepare('DELETE FROM assets WHERE id=? AND owner_key=?').run(req.params.id, req.ownerKey); res.json({ ok: true });
   });
   const send = (req, res, row) => {
     res.set({ 'Cache-Control': 'no-store', 'X-Robots-Tag': 'noindex, nofollow', 'Content-Type': row.mime, 'Content-Security-Policy': "default-src 'none'; img-src 'self'; media-src 'self'; sandbox allow-same-origin allow-downloads; frame-ancestors 'self'" });
@@ -90,12 +90,12 @@ export function registerAssets(app, db) {
     }
     res.set('Content-Length', String(bytes.length)); return req.method === 'HEAD' ? res.end() : res.end(bytes);
   };
-  app.get('/api/assets/:id/content', (req, res) => {
-    const row = db.prepare('SELECT * FROM assets WHERE id=? AND owner_key=?').get(req.params.id, req.ownerKey);
+  app.get('/api/assets/:id/content', async (req, res) => {
+    const row = await db.prepare('SELECT * FROM assets WHERE id=? AND owner_key=?').get(req.params.id, req.ownerKey);
     if (!row) throw new ValidationError('File not found.', 404); send(req, res, row);
   });
-  return (req, res) => {
-    const row = db.prepare('SELECT a.* FROM assets a WHERE a.id=? AND EXISTS(SELECT 1 FROM qr_codes q WHERE q.asset_id=a.id AND q.active=1)').get(req.params.id);
+  return async (req, res) => {
+    const row = await db.prepare('SELECT a.* FROM assets a WHERE a.id=? AND EXISTS(SELECT 1 FROM qr_codes q WHERE q.asset_id=a.id AND q.active=1)').get(req.params.id);
     if (!row) return res.status(404).set('Cache-Control', 'no-store').type('text/plain').send('This file is unavailable. Its code may be paused, deleted, or replaced.');
     send(req, res, row);
   };

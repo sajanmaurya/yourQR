@@ -142,6 +142,19 @@ export function openDatabase(dbPath) {
   }
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS folders_owner_name ON folders(owner_key, name COLLATE NOCASE)');
   if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Foreign key migration verification failed');
+  db.dialect = 'sqlite';
+  db.ready = Promise.resolve();
+  db.transaction = async fn => {
+    db.exec('BEGIN IMMEDIATE');
+    try {
+      const result = await fn(db);
+      db.exec('COMMIT');
+      return result;
+    } catch (error) {
+      db.exec('ROLLBACK');
+      throw error;
+    }
+  };
   return db;
 }
 
