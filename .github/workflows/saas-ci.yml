@@ -57,6 +57,13 @@ jobs:
           test "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM scans")" -eq 1
           test "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM assets WHERE octet_length(bytes) = 8")" -eq 1
           test "$(psql "$DATABASE_URL" -Atc "SELECT count(*) FROM email_verifications")" -eq 1
+      - name: Create empty runtime test database
+        run: psql "$DATABASE_URL" -c 'CREATE DATABASE qori_runtime'
+      - name: Exercise live PostgreSQL API and imported database
+        env:
+          QORI_POSTGRES_TEST_URL: postgresql://qori:qori_test_password@127.0.0.1:5432/qori_runtime
+          QORI_POSTGRES_IMPORTED_URL: postgresql://qori:qori_test_password@127.0.0.1:5432/qori
+        run: node --test server/postgres.test.js
       - name: Reject repeat migration without modifying target
         run: |
           if python3 db/postgres/migrate_sqlite.py --sqlite "$RUNNER_TEMP/qori-source.sqlite"; then
