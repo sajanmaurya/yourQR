@@ -290,3 +290,10 @@ The PDF editor now puts upload first, and the saved-code menu includes **Share o
 The `saas-development` branch introduces self-serve user accounts and tenant-scoped QR codes, folders, uploaded assets, analytics and JSON exports. It preserves older personal-owner records in the `legacy` workspace. Set `SAAS_MODE=true` locally to enable the **Create an account** screen. Set `SAAS_MODE=false` to preserve the original single-owner flow.
 
 **Not production SaaS yet:** this is a guarded multi-account prototype backed by SQLite. Public registration must remain disabled on any internet-exposed deployment until email verification, account recovery, anti-abuse protections, file scanning, quotas, PostgreSQL migration, reliable backups and production monitoring are implemented and tested. The original application is preserved on `main`.
+
+## Phase 2 developer notes
+
+- PostgreSQL target schema: [db/postgres/schema.sql](db/postgres/schema.sql).
+- Safe SQLite snapshot importer and prerequisite commands: [db/postgres/README.md](db/postgres/README.md).
+- In a real production SaaS, registration requires email verification and uses the Resend REST API. Configure `RESEND_API_KEY` and `MAIL_FROM` privately on the server and use a stable HTTPS `PUBLIC_BASE_URL`. Password recovery links expire after 30 minutes and revoke account sessions.
+- The PostgreSQL importer is for testing the move of existing data. **The current runtime remains SQLite** until the backend database adapter is migrated. Do not switch traffic or remove SQLite data after import.

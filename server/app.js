@@ -63,6 +63,9 @@ export function createApp(options = {}) {
   }
   const setupToken = options.setupToken ?? process.env.SETUP_TOKEN ?? '';
   const secureCookie = options.secureCookie ?? (process.env.COOKIE_SECURE !== undefined ? process.env.COOKIE_SECURE === 'true' : publicUrl.protocol === 'https:');
+  if (environment === 'production' && saasMode && (publicUrl.protocol !== 'https:' || !secureCookie)) {
+    throw new Error('Production SaaS requires a permanent HTTPS PUBLIC_BASE_URL and secure session cookies.');
+  }
   const proxyHops = Number(options.trustProxy ?? process.env.TRUST_PROXY ?? 0);
   if (!Number.isInteger(proxyHops) || proxyHops < 0 || proxyHops > 5) throw new Error('TRUST_PROXY must be an integer from 0 to 5.');
   const db = openDatabase(dbPath);
@@ -191,7 +194,8 @@ export function createApp(options = {}) {
         const token = randomBytes(32).toString('hex');
         db.prepare('INSERT INTO email_verifications(account_id,token_hash,expires_at) VALUES(?,?,?) ON CONFLICT(account_id) DO UPDATE SET token_hash=excluded.token_hash, expires_at=excluded.expires_at')
           .run(account.id, tokenHash(token), Date.now() + 86400000);
-        await emailSender({ to: email, url: publicBaseUrl + '/?verify=' + token });
+        try { await emailSender({ to: email, url: publicBaseUrl + '/?verify=' + token }); }
+        catch { console.error('Qori verification resend delivery failed.'); }
       }
     }
     res.json({ message: 'If verification is required, a fresh link has been sent.' });

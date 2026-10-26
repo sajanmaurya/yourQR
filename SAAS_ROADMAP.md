@@ -27,3 +27,17 @@ This milestone deliberately retains SQLite and uses passwords + server sessions.
 **Local test:** Node 24+, npm ci, copy .env.example to .env, set SAAS_MODE=true, npm run build, npm start. Open http://localhost:8787. Register two different accounts and verify they cannot read each other's workspace.
 
 **Default:** SAAS_MODE=false keeps personal-owner behavior. Never copy production databases to a public demo without reviewing personal content and account data.
+
+## Phase 2: In progress (PostgreSQL + verified identity)
+
+Implemented on this branch:
+- PostgreSQL schema in `db/postgres/schema.sql`, with user-owned workspaces and membership rows.
+- Python/psql SQLite snapshot importer in `db/postgres/migrate_sqlite.py`. Transactions, count validation, empty-target checks, binary byte preservation and test-only fixtures are covered by GitHub Actions.
+- Production SaaS registrations require single-use expiring email confirmation before login.
+- Password reset uses single-use hashed tokens, 30-minute expiry, and invalidates all existing account sessions when used.
+- Resend verification and reset links through Resend REST email provider (bring your own verified sender and credentials).
+- CI runs Node backend/lint/build and a real PostgreSQL service import test.
+
+`SAAS_MODE=true` remains an experimental flag. Development/test deliberately skip mandatory verification unless `requireEmailVerification` is enabled in test or `NODE_ENV=production`. Real production SaaS requires `RESEND_API_KEY`, `MAIL_FROM`, and a permanent HTTPS `PUBLIC_BASE_URL`.
+
+**Not implemented yet:** Express still runs on SQLite. Importing PostgreSQL data **does not switch API traffic**. No PostgreSQL application adapter/cutover, production mail delivery verification, managed database account, deployment, R2 storage, or billing yet. Never claim this is launched or ready for public customer data.
