@@ -32,7 +32,7 @@ export function registerAssets(app, db, options = {}) {
   const r2 = options.r2 === undefined ? createR2Storage() : options.r2;
   const storeMarker = async (sql, values, marker, suffix = []) => {
     // PostgreSQL BYTEA sent via a hex string is supported by both pg and Neon HTTP.
-    if (db.dialect === 'postgres') return db.prepare(sql.replace('?', '?')).run(...values, marker.toString('hex'), ...suffix);
+    if (db.dialect === 'postgres') return db.prepare(sql).run(...values, marker.toString('hex'), ...suffix);
     return db.prepare(sql).run(...values, marker, ...suffix);
   };
   // PDF-only direct R2 upload. No 10 MB body passes through a Vercel Function.

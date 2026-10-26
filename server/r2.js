@@ -51,7 +51,6 @@ export function createR2Storage(env = process.env, backend = {}) {
       if (!ALLOWED_KEY.test(key)) throw new Error('Invalid R2 key.');
       const url = await sign(client, new PutObjectCommand({
         Bucket: bucket, Key: key, ContentType: 'application/pdf',
-        ContentDisposition: 'inline; filename="qori-document.pdf"',
       }), { expiresIn: 300 });
       return { key, url, contentType: 'application/pdf' };
     },
