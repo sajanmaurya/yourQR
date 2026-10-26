@@ -19,6 +19,7 @@ COLUMNS = {
     "accounts": "id name email password_hash created_at verified_at",
     "sessions": "token_hash owner_id expires_at",
     "account_sessions": "token_hash account_id expires_at",
+    "email_verifications": "account_id token_hash expires_at",
     "settings": "key value",
     "folders": "id name color created_at owner_key",
     "assets": "id kind name mime size bytes created_at owner_key",
@@ -68,8 +69,9 @@ def main():
             for table, column_string in COLUMNS.items():
                 cols = column_string.split()
                 existing = {row[1] for row in connection.execute("PRAGMA table_info(" + table + ")")}
-                if not set(cols).issubset(existing):
-                    raise RuntimeError("Missing SQLite fields in " + table + ": " + repr(set(cols) - existing))
+                missing = set(cols) - existing
+                if missing and not (table == "accounts" and missing == {"verified_at"}):
+                    raise RuntimeError("Missing SQLite fields in " + table + ": " + repr(missing))
                 counts[table] = connection.execute("SELECT count(*) FROM " + table).fetchone()[0]
             owners = {row[0] for row in connection.execute("SELECT id FROM accounts")}
             invalid_owners = set()
@@ -89,12 +91,12 @@ def main():
                 instructions.write("BEGIN;\n")
                 instructions.write(schema.read_text(encoding="utf-8") + "\n")
                 all_tables = ", ".join(COLUMNS) + ", workspaces, workspace_memberships"
-                instructions.write("DO $guard$ BEGIN IF EXISTS (SELECT 1 FROM accounts) OR EXISTS (SELECT 1 FROM qr_codes) OR EXISTS (SELECT 1 FROM workspaces) OR EXISTS (SELECT 1 FROM owner) OR EXISTS (SELECT 1 FROM assets) OR EXISTS (SELECT 1 FROM folders) OR EXISTS (SELECT 1 FROM scans) OR EXISTS (SELECT 1 FROM sessions) OR EXISTS (SELECT 1 FROM account_sessions) OR EXISTS (SELECT 1 FROM settings) OR EXISTS (SELECT 1 FROM workspace_memberships) THEN RAISE EXCEPTION 'Target database is not empty'; END IF; END $guard$;\n")
+                instructions.write("DO $guard$ BEGIN IF EXISTS (SELECT 1 FROM accounts) OR EXISTS (SELECT 1 FROM qr_codes) OR EXISTS (SELECT 1 FROM workspaces) OR EXISTS (SELECT 1 FROM owner) OR EXISTS (SELECT 1 FROM assets) OR EXISTS (SELECT 1 FROM folders) OR EXISTS (SELECT 1 FROM scans) OR EXISTS (SELECT 1 FROM sessions) OR EXISTS (SELECT 1 FROM account_sessions) OR EXISTS (SELECT 1 FROM email_verifications) OR EXISTS (SELECT 1 FROM settings) OR EXISTS (SELECT 1 FROM workspace_memberships) THEN RAISE EXCEPTION 'Target database is not empty'; END IF; END $guard$;\n")
                 for table, column_string in COLUMNS.items():
                     cols = column_string.split()
                     filename = directory / (table + ".csv")
                     with filename.open("w", encoding="utf-8", newline="") as writer:
-                        sql = "SELECT " + ", ".join(cols) + " FROM " + table
+                        sql = "SELECT " + ", ".join((col if col in existing else "NULL AS " + col) for col in cols) + " FROM " + table
                         for row in connection.execute(sql):
                             writer.write(",".join(csv_field(item) for item in row) + "\n")
                     # Directory is created by tempfile, no embedded quote in generated basename.

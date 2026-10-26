@@ -94,6 +94,11 @@ export function openDatabase(dbPath) {
       password_hash TEXT NOT NULL,
       created_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS email_verifications (
+      account_id TEXT PRIMARY KEY REFERENCES accounts(id) ON DELETE CASCADE,
+      token_hash TEXT NOT NULL UNIQUE,
+      expires_at INTEGER NOT NULL
+    );
     CREATE TABLE IF NOT EXISTS account_sessions (
       token_hash TEXT PRIMARY KEY,
       account_id TEXT NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
@@ -126,6 +131,9 @@ export function openDatabase(dbPath) {
       `);
     } catch (error) { db.exec('ROLLBACK'); throw error; }
     finally { db.exec('PRAGMA foreign_keys = ON'); }
+  }
+  if (!db.prepare('PRAGMA table_info(accounts)').all().some(c => c.name === 'verified_at')) {
+    db.exec('ALTER TABLE accounts ADD COLUMN verified_at TEXT');
   }
   db.exec('CREATE UNIQUE INDEX IF NOT EXISTS folders_owner_name ON folders(owner_key, name COLLATE NOCASE)');
   if (db.prepare('PRAGMA foreign_key_check').all().length) throw new Error('Foreign key migration verification failed');
