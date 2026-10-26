@@ -24,7 +24,7 @@ export function openNeonHttpDatabase(connectionString, options = {}) {
           async run(...args) {
             // All application transactions consist of INSERT/UPDATE/DELETE
             // statements; reads inside these callbacks are explicitly rejected.
-            if (!/^\\s*(?:INSERT|UPDATE|DELETE)\\b/i.test(source)) throw new Error('Neon HTTP transactions only support queued writes.');
+            if (!/^\s*(?:INSERT|UPDATE|DELETE)\b/i.test(source)) throw new Error('Neon HTTP transactions only support queued writes.');
             queries.push(sql.query(postgresSQL(source), args, { fullResults: true }));
             return { changes: 0 };
           },

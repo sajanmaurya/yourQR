@@ -73,7 +73,7 @@ export function createApp(options = {}) {
   const databaseUrl = options.databaseUrl ?? process.env.DATABASE_URL;
   // Neon HTTP is designed for ephemeral serverless functions. Locally, retain
   // node-postgres for existing self-hosted deployments and migration tests.
-  const useNeonHttp = Boolean(databaseUrl && process.env.VERCEL === '1' && /\\.neon\\.tech(?::\\d+)?\\//.test(databaseUrl));
+  const useNeonHttp = Boolean(databaseUrl && process.env.VERCEL === '1' && /\.neon\.tech(?::\d+)?\//.test(databaseUrl));
   const db = databaseUrl
     ? (useNeonHttp ? openNeonHttpDatabase(databaseUrl) : openPostgresDatabase(databaseUrl, { maxConnections: process.env.VERCEL === '1' ? 2 : 10 }))
     : openDatabase(dbPath);
