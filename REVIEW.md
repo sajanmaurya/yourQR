@@ -1,4 +1,4 @@
-# Qori test and improvement review
+# yourQR test and improvement review
 
 Reviewed on **26 October 2026**. Scope: desktop and 390 px mobile layouts; login; QR creation and editing; all 19 content encoders; PDF upload/replacement and downloads; folders; analytics; sharing; recovery and Wi-Fi configuration.
 
@@ -40,7 +40,7 @@ The screenshots below show generic test records, not personal files.
 ## Limits and remaining operational considerations
 
 - The final address is the phone-hotspot address **http://10.177.121.108:8787**. During the review, the computer briefly joined another router and returned to the hotspot. No QR addresses were rewritten to the temporary router address.
-- Keep the computer awake and Qori running. A downloaded QR cannot change its encoded IP when the computer joins another network. Update Wi-Fi sharing and download affected QR images again after an address change, or keep a stable local address.
+- Keep the computer awake and yourQR running. A downloaded QR cannot change its encoded IP when the computer joins another network. Update Wi-Fi sharing and download affected QR images again after an address change, or keep a stable local address.
 - Mobile checks used browser viewport emulation. This review did not remotely control the physical phone. The user had previously confirmed that its PDF link opens/downloads on the phone.
 - Keyboard and visible layout checks do not constitute a full screen-reader or WCAG compliance audit.
 - Docker and an external HTTPS deployment were not executed in this environment. The Docker build inputs were updated for the new code-check step.

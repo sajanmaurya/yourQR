@@ -7,9 +7,11 @@ services:
       - "127.0.0.1:8787:8787"
     environment:
       NODE_ENV: production
+      SAAS_MODE: "${SAAS_MODE:-false}"
       HOST: 0.0.0.0
       PORT: 8787
       DB_PATH: /app/data/qori.sqlite
+      DATABASE_URL: ${DATABASE_URL:-}
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL to your permanent HTTPS URL in .env}
       SETUP_TOKEN: ${SETUP_TOKEN:-}
       TRUST_PROXY: "1"

@@ -1,0 +1,84 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { createApp } from './app.js';
+
+const url = process.env.QORI_POSTGRES_TEST_URL;
+test('PostgreSQL end-to-end runtime: accounts, QR, uploads, redirects and tenant isolation', { skip: !url }, async t => {
+  const app = createApp({ databaseUrl: url, saasMode: true, environment: 'test', publicBaseUrl: 'http://localhost:8787', secureCookie: false });
+  await app.locals.ready;
+  const server = await new Promise(resolve => { const s=app.listen(0,'127.0.0.1',()=>resolve(s)); });
+  t.after(async()=>{await new Promise(resolve=>server.close(resolve)); await app.locals.close();});
+  const base = 'http://127.0.0.1:' + server.address().port;
+  const send = async (route,{method='GET',body,cookie,raw=false}={}) => {
+    const response=await fetch(base+route,{method,redirect:'manual',
+      headers:{...(cookie?{cookie}:{}),...(raw?{'content-type':'application/octet-stream','X-File-Name':'menu.pdf'}:body===undefined?{}:{'content-type':'application/json'})},
+      ...(body===undefined?{}:{body:raw?body:JSON.stringify(body)})});
+    let data;
+    if ((response.headers.get('content-type')||'').includes('application/json')) data=await response.json();
+    return {status:response.status,data,cookie:response.headers.get('set-cookie')?.split(';')[0],location:response.headers.get('location')};
+  };
+  const password='postgres-test-unique-password-123';
+  const alice=await send('/api/auth/register',{method:'POST',body:{name:'Alice PG',email:'pg-alice@example.com',password}});
+  const bob=await send('/api/auth/register',{method:'POST',body:{name:'Bob PG',email:'pg-bob@example.com',password}});
+  assert.equal(alice.status,201,JSON.stringify(alice.data));
+  assert.equal(bob.status,201,JSON.stringify(bob.data));
+  const A=alice.cookie,B=bob.cookie;
+  assert.equal((await send('/api/settings',{cookie:A})).data.database,'PostgreSQL');
+  const folder=await send('/api/folders',{method:'POST',cookie:A,body:{name:'Menus'}});
+  assert.equal(folder.status,201,JSON.stringify(folder.data));
+  const qr=await send('/api/qrs',{method:'POST',cookie:A,body:{name:'Main Menu',type:'dynamic',contentType:'url',destination:'https://example.org/one',folderId:folder.data.folder.id,slug:'pg-main-menu'}});
+  assert.equal(qr.status,201,JSON.stringify(qr.data));
+  assert.equal((await send('/api/qrs',{cookie:B})).data.qrs.length,0);
+  assert.equal((await send('/api/qrs/'+qr.data.qr.id+'/download?format=png',{cookie:B})).status,404);
+  assert.equal((await send('/api/qrs/'+qr.data.qr.id,{method:'PATCH',cookie:B,body:{name:'stolen'}})).status,404);
+  const raw=Buffer.from('%PDF-1.4\n1 0 obj\n<<>>\nendobj\n%%EOF\n');
+  const upload=await send('/api/assets?type=pdf',{method:'POST',body:raw,cookie:A,raw:true});
+  assert.equal(upload.status,201,JSON.stringify(upload.data));
+  assert.equal((await send('/api/assets/'+upload.data.asset.id+'/content',{cookie:B})).status,404);
+  const fileQr=await send('/api/qrs',{method:'POST',cookie:A,body:{name:'PDF',contentType:'pdf',type:'dynamic',assetId:upload.data.asset.id,slug:'pg-file-menu'}});
+  assert.equal(fileQr.status,201,JSON.stringify(fileQr.data));
+  assert.equal((await send('/files/'+upload.data.asset.id)).status,200);
+  assert.equal((await send('/r/pg-main-menu',{method:'HEAD'})).status,302);
+  const redir=await send('/r/pg-main-menu');
+  assert.equal(redir.status,302);
+  assert.equal(redir.location,'https://example.org/one');
+  assert.equal((await send('/api/analytics?days=7',{cookie:B})).data.totalScans,0);
+  assert.equal((await send('/api/analytics?days=7',{cookie:A})).data.totalScans,1);
+  const edit=await send('/api/qrs/'+qr.data.qr.id,{method:'PATCH',cookie:A,body:{destination:'https://example.org/two'}});
+  assert.equal(edit.status,200,JSON.stringify(edit.data));
+  assert.equal(edit.data.qr.shortUrl,qr.data.qr.shortUrl);
+  assert.equal((await send('/r/pg-main-menu',{method:'HEAD'})).location,'https://example.org/two');
+  assert.equal((await send('/api/export',{cookie:B})).data.qrs.length,0);
+  assert.equal((await send('/api/export',{cookie:A})).data.qrs.length,2);
+  assert.equal((await send('/api/auth/logout',{method:'POST',cookie:A})).status,200);
+  assert.equal((await send('/api/qrs',{cookie:A})).status,401);
+  const login=await send('/api/auth/login',{method:'POST',body:{email:'pg-alice@example.com',password}});
+  assert.equal(login.status,200,JSON.stringify(login.data));
+  assert.equal((await send('/api/qrs',{cookie:login.cookie})).data.qrs.length,2);
+});
+
+test('PostgreSQL imported SQLite snapshot retains legacy and account QR links', { skip: !process.env.QORI_POSTGRES_IMPORTED_URL },async t=>{
+  const app=createApp({databaseUrl:process.env.QORI_POSTGRES_IMPORTED_URL,saasMode:true,environment:'test',secureCookie:false,publicBaseUrl:'http://localhost:8787'});
+  await app.locals.ready;
+  const server=await new Promise(resolve=>{const s=app.listen(0,'127.0.0.1',()=>resolve(s));});
+  t.after(async()=>{await new Promise(resolve=>server.close(resolve));await app.locals.close();});
+  const base='http://127.0.0.1:'+server.address().port;
+  const login=await fetch(base+'/api/auth/login',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({email:'alice@example.com',password:'not-a-production-password-12345'})});
+  assert.equal(login.status,200,await login.text());
+  const cookie=login.headers.get('set-cookie').split(';')[0];
+  const list=await fetch(base+'/api/qrs',{headers:{cookie}});
+  assert.equal(list.status,200);
+  const codes=(await list.json()).qrs;
+  assert.equal(codes.length,1);
+  assert.equal(codes[0].id,'qr-1');
+  assert.equal(codes[0].asset.name,'Menu "small".pdf');
+  const redirect=await fetch(base+'/r/menu',{redirect:'manual',method:'HEAD'});
+  assert.equal(redirect.status,302);
+  assert.equal(redirect.headers.get('location'),'https://example.org/menu');
+  const pdf=await fetch(base+'/files/asset-1');
+  assert.equal(pdf.status,200);
+  assert.deepEqual(Buffer.from(await pdf.arrayBuffer()),Buffer.from([0,1,2,3,4,5,255,10]));
+  const analytics=await fetch(base+'/api/analytics?days=7',{headers:{cookie}});
+  assert.equal(analytics.status,200);
+  assert.equal((await analytics.json()).totalScans,1);
+});

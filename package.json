@@ -1,5 +1,5 @@
 {
-  "name": "qori",
+  "name": "yourqr",
   "version": "1.0.0",
   "private": true,
   "type": "module",
@@ -10,6 +10,7 @@
   "scripts": {
     "dev": "concurrently --kill-others -n api,web \"node --watch --env-file-if-exists=.env server/index.js\" \"vite --host 127.0.0.1\"",
     "build": "npm run lint && vite build",
+    "build:vercel": "npm run build && node scripts/stage-vercel.js",
     "start": "node --env-file-if-exists=.env server/index.js",
     "test": "node --test server/*.test.js",
     "test:e2e": "playwright test",
@@ -20,6 +21,10 @@
   "dependencies": {
     "express": "^5.1.0",
     "helmet": "^8.1.0",
+    "pg": "^8.16.3",
+    "@neondatabase/serverless": "^1.2.0",
+    "@aws-sdk/client-s3": "^3.1156.0",
+    "@aws-sdk/s3-request-presigner": "^3.1156.0",
     "lucide-react": "^0.468.0",
     "qrcode": "^1.5.4",
     "react": "^19.1.0",

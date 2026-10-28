@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Search, QrCode, Link2, FileText, Image, Smartphone, Type, MessageCircle, Play, Camera, Users, Send, ContactRound, MapPin, Wifi, Music2, Mail, CalendarCheck, Phone, Presentation, Route, ArrowUpRight, ShieldCheck, FileUp, ExternalLink, Globe2 } from 'lucide-react';
 import { CONTENT_TYPES, contentType } from '../shared/content-types.js';
 import { Select, Spinner } from './components.jsx';
-import { formatBytes } from './api.js';
+import { api, formatBytes } from './api.js';
 const Icons = { Search, QrCode, Link2, FileText, Image, Smartphone, Type, MessageCircle, Play, Camera, Users, Send, ContactRound, MapPin, Wifi, Music2, Mail, CalendarCheck, Phone, Presentation, Route, ArrowUpRight, ShieldCheck, FileUp, ExternalLink, Globe2 };
 
 export function TypeChooser({ onChoose }) {
@@ -25,9 +25,27 @@ export function ContentFields({ draft, qr, update, onUploading, setError }) {
     if (file.size > meta.maxMB * 1024 * 1024) { setError(`${meta.name} files must be no larger than ${meta.maxMB} MB.`); return; }
     setUploadBusy(true); onUploading(true); setError('');
     try {
-      const response = await fetch(`/api/assets?type=${meta.id}`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) }, body: file });
-      const result = await response.json();
-      if (!response.ok) throw new Error(result.error || 'Upload failed. Please try again.');
+      let result;
+      if (meta.id === 'pdf') {
+        try {
+          const request = await api('/assets/r2/init', { method: 'POST', body: { kind: 'pdf', size: file.size, name: file.name } });
+          const transfer = await fetch(request.uploadUrl, {
+            method: 'PUT', credentials: 'omit',
+            headers: { 'Content-Type': request.contentType }, body: file,
+          });
+          if (!transfer.ok) throw new Error('Cloudflare upload failed. Check that the R2 bucket allows PUT from this yourQR domain.');
+          result = await api('/assets/r2/complete', { method: 'POST', body: { id: request.id } });
+        } catch (error) {
+          if (error.status !== 503) throw error;
+          if (file.size > 4000000) throw new Error('Large PDF uploads need Cloudflare R2. Ask the yourQR owner to configure R2.');
+          // Allow the legacy small-PDF workflow until R2 is activated.
+        }
+      }
+      if (!result) {
+        const response = await fetch(`/api/assets?type=${meta.id}`, { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/octet-stream', 'X-File-Name': encodeURIComponent(file.name) }, body: file });
+        result = await response.json();
+        if (!response.ok) throw new Error(result.error || 'Upload failed. Please try again.');
+      }
       update('asset', result.asset);
       update('assetId', result.asset.id);
       if (!draft.name.trim()) update('name', file.name.replace(/\.[^.]+$/, '').slice(0, 100));

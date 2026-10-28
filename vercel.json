@@ -1,0 +1,25 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "express",
+  "buildCommand": "npm run build:vercel",
+  "functions": {
+    "index.js": {
+      "includeFiles": "{db/postgres/schema.sql,public/index.html,public/assets/**,dist/assets/**}",
+      "regions": [
+        "iad1"
+      ],
+      "maxDuration": 60
+    }
+  },
+  "headers": [
+    {
+      "source": "/r/:path*",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "no-store, max-age=0"
+        }
+      ]
+    }
+  ]
+}
