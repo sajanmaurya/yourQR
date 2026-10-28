@@ -54,8 +54,8 @@ export function createApp(options = {}) {
       method: 'POST',
       headers: { Authorization: 'Bearer ' + process.env.RESEND_API_KEY, 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        from: process.env.MAIL_FROM, to: [to], subject: purpose === 'reset' ? 'Reset your Qori password' : 'Verify your Qori email',
-        text: purpose === 'reset' ? 'Reset your Qori password using this link: ' + url + '\n\nThis link expires in 30 minutes.' : 'Verify your email to activate Qori: ' + url + '\n\nThis link expires in 24 hours.',
+        from: process.env.MAIL_FROM, to: [to], subject: purpose === 'reset' ? 'Reset yourQR password' : 'Verify yourQR email',
+        text: purpose === 'reset' ? 'Reset yourQR password using this link: ' + url + '\n\nThis link expires in 30 minutes.' : 'Verify your email to activate yourQR: ' + url + '\n\nThis link expires in 24 hours.',
       }),
     });
     if (!response.ok) throw new Error('Email provider rejected verification request.');
@@ -233,7 +233,7 @@ export function createApp(options = {}) {
         await db.prepare('INSERT INTO email_verifications(account_id,token_hash,expires_at) VALUES(?,?,?) ON CONFLICT(account_id) DO UPDATE SET token_hash=excluded.token_hash, expires_at=excluded.expires_at')
           .run(account.id, tokenHash(token), Date.now() + 86400000);
         try { await emailSender({ to: email, url: publicBaseUrl + '/?verify=' + token }); }
-        catch { console.error('Qori verification resend delivery failed.'); }
+        catch { console.error('yourQR verification resend delivery failed.'); }
       }
     }
     res.json({ message: 'If verification is required, a fresh link has been sent.' });
@@ -252,7 +252,7 @@ export function createApp(options = {}) {
       catch {
         await db.prepare('DELETE FROM password_resets WHERE account_id=?').run(account.id);
         // Do not disclose whether a particular address belongs to an account.
-        console.error('Qori password reset email delivery failed.');
+        console.error('yourQR password reset email delivery failed.');
       }
     }
     res.json(result);
@@ -427,7 +427,7 @@ export function createApp(options = {}) {
     const format = req.query.format || 'svg';
     if (!['svg', 'png'].includes(format)) throw new ValidationError('Download format must be svg or png.');
     const qr = await mapQR(await getRow(req.params.id, req.ownerKey));
-    const filename = qr.name.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'qori-code';
+    const filename = qr.name.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'yourQR-code';
     res.type(format === 'svg' ? 'image/svg+xml' : 'image/png');
     res.attachment(`${filename}.${format}`);
     res.send(await renderQR(qr, format));
@@ -485,7 +485,7 @@ export function createApp(options = {}) {
   app.get('/api/settings', async (req, res) => res.json({ ...config(), database: db.dialect === 'postgres' ? 'PostgreSQL' : 'SQLite', sessionDays: SESSION_DAYS, analyticsTimezone: 'UTC' }));
   app.get('/api/export', async (req, res) => {
     const qrs = await Promise.all((await db.prepare('SELECT q.*, (SELECT COUNT(*) FROM scans WHERE qr_id=q.id) AS scan_count FROM qr_codes q WHERE q.owner_key=? ORDER BY created_at').all(req.ownerKey)).map(mapQR));
-    res.attachment(`qori-library-${new Date().toISOString().slice(0, 10)}.json`);
+    res.attachment(`yourQR-library-${new Date().toISOString().slice(0, 10)}.json`);
     res.json({ version: '1.0.0', exportedAt: new Date().toISOString(), publicBaseUrl, folders: (await folderRows(req.ownerKey)).map(mapFolder), qrs, note: 'Library export only. Copy the stopped SQLite database for a full backup including scan history and your account.' });
   });
   app.use('/api', (req, res) => res.status(404).json({ error: 'API endpoint not found.' }));
@@ -530,7 +530,7 @@ export function createApp(options = {}) {
     if (error instanceof ValidationError) return res.status(error.status).json({ error: error.message });
     if (error.type === 'entity.too.large') return res.status(413).json({ error: req.path === '/api/assets' ? 'File uploads must be no larger than 25 MB. PDF/PPTX limits are 20 MB; images are 10 MB.' : 'Request is too large. Use a logo smaller than 200 KB.' });
     if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'Request body must contain valid JSON.' });
-    console.error('Qori request failed:', error.message);
+    console.error('yourQR request failed:', error.message);
     if (databaseUrl && /connection timeout|connection terminated|ETIMEDOUT|ECONNREFUSED|ENETUNREACH|EHOSTUNREACH|EAI_AGAIN/i.test(error.message || '')) {
       res.set('Retry-After', '30');
       return res.status(503).json({ error: 'The database is temporarily unavailable. Please retry shortly.' });

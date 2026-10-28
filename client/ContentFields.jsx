@@ -33,11 +33,11 @@ export function ContentFields({ draft, qr, update, onUploading, setError }) {
             method: 'PUT', credentials: 'omit',
             headers: { 'Content-Type': request.contentType }, body: file,
           });
-          if (!transfer.ok) throw new Error('Cloudflare upload failed. Check that the R2 bucket allows PUT from this Qori domain.');
+          if (!transfer.ok) throw new Error('Cloudflare upload failed. Check that the R2 bucket allows PUT from this yourQR domain.');
           result = await api('/assets/r2/complete', { method: 'POST', body: { id: request.id } });
         } catch (error) {
           if (error.status !== 503) throw error;
-          if (file.size > 4000000) throw new Error('Large PDF uploads need Cloudflare R2. Ask the Qori owner to configure R2.');
+          if (file.size > 4000000) throw new Error('Large PDF uploads need Cloudflare R2. Ask the yourQR owner to configure R2.');
           // Allow the legacy small-PDF workflow until R2 is activated.
         }
       }

@@ -4,8 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="theme-color" content="#087c68" />
-    <meta name="description" content="Qori is your personal workspace for creating, organizing, and tracking QR codes." />
-    <title>Qori — Your QR workspace</title>
+    <meta name="application-name" content="yourQR" />
+    <meta name="description" content="yourQR is your personal workspace for creating, organizing, and tracking QR codes." />
+    <title>yourQR — Your QR workspace</title>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
   </head>
   <body>
@@ -16,7 +17,7 @@
       setTimeout(() => {
         const root = document.getElementById('root');
         if (!root || root.childElementCount !== 0) return;
-        root.innerHTML = '<main style="min-height:100vh;display:grid;place-items:center;font:16px system-ui;background:#f8fafb;color:#17242a;padding:24px"><section style="max-width:480px"><h1 style="font-size:28px">Qori couldn\'t finish loading.</h1><p>The application files may be unavailable. Reload this page, or check the browser console for a failed JavaScript request.</p><button style="padding:12px 18px;border:0;border-radius:9px;background:#087c68;color:white;cursor:pointer" onclick="location.reload()">Reload Qori</button></section></main>';
+        root.innerHTML = '<main style="min-height:100vh;display:grid;place-items:center;font:16px system-ui;background:#f8fafb;color:#17242a;padding:24px"><section style="max-width:480px"><h1 style="font-size:28px">yourQR couldn\'t finish loading.</h1><p>The application files may be unavailable. Reload this page, or check the browser console for a failed JavaScript request.</p><button style="padding:12px 18px;border:0;border-radius:9px;background:#087c68;color:white;cursor:pointer" onclick="location.reload()">Reload yourQR</button></section></main>';
       }, 9000);
     </script>
     <script type="module" src="/client/main.jsx"></script>

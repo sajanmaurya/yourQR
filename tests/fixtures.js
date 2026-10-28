@@ -1,5 +1,5 @@
 // Small valid files made in memory for isolated upload tests.
-export function pdfFile(message = 'A PDF shared with Qori') {
+export function pdfFile(message = 'A PDF shared with yourQR') {
   const stream = `BT /F1 18 Tf 40 160 Td (${message.replace(/[()\\]/g, '')}) Tj ET`;
   const objects = [
     '<< /Type /Catalog /Pages 2 0 R >>',

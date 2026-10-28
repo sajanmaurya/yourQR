@@ -6,7 +6,7 @@ if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error('PORT m
 const app = createApp();
 await app.locals.ready;
 const server = app.listen(port, host, () => {
-  console.log(`Qori is running at http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`);
+  console.log(`yourQR is running at http://${host === '0.0.0.0' ? 'localhost' : host}:${port}`);
   console.log(`QR redirect origin: ${app.locals.config.publicBaseUrl}`);
 });
 let closing = false;

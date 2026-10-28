@@ -1,6 +1,6 @@
-# Qori
+# yourQR
 
-A personal, self-hostable QR code workspace. Create attractive codes, keep them in folders, change a dynamic code’s destination after printing, and see visits to your redirect links. Qori uses its own design and assets; it is inspired by the QR management workflow, with no ME-QR branding or proprietary assets.
+A personal, self-hostable QR code workspace. Create attractive codes, keep them in folders, change a dynamic code’s destination after printing, and see visits to your redirect links. yourQR uses its own design and assets; it is inspired by the QR management workflow, with no ME-QR branding or proprietary assets.
 
 ## What is included
 
@@ -20,7 +20,7 @@ The database starts empty. All counters come from saved records and actual redir
 
 1. Click **Create QR code**, then choose **PDF**.
 2. Upload a PDF of up to **20 MB**. Give the code a name and optionally choose a permanent short-link slug, folder, colors, and logo.
-3. Save, then download its QR as PNG or SVG. A scan opens the PDF from your Qori server.
+3. Save, then download its QR as PNG or SVG. A scan opens the PDF from yourQR server.
 4. To update the document, open **Edit code**, upload a replacement PDF, and **Save changes**. The QR image and its permanent short link stay the same.
 
 Your uploaded files are stored as binary data inside SQLite, alongside your saved records. No external file host or QR service is involved. A full stopped-database backup includes the files. The JSON workspace export includes file metadata and references, **not file contents**.
@@ -95,7 +95,7 @@ The built app and development app use the same local database. Stop one API inst
 
 ### Use a phone on the same Wi-Fi
 
-For a Wi-Fi-only installation, stop Qori, find your computer's Wi-Fi IPv4 address with `ipconfig`, then run this from the project folder:
+For a Wi-Fi-only installation, stop yourQR, find your computer's Wi-Fi IPv4 address with `ipconfig`, then run this from the project folder:
 
 ```powershell
 npm run share:wifi -- 192.168.1.20
@@ -104,7 +104,7 @@ npm start
 
 Replace the example IP with your computer's actual address. This saves `HOST=0.0.0.0` and the Wi-Fi `PUBLIC_BASE_URL` in your private `.env`. The command backs up SQLite and updates existing dynamic codes whose QR address contains localhost/loopback or this app's previous Wi-Fi origin. Account, uploaded files, folders, slugs, and scan history are preserved. **Download affected QR images again**; previously downloaded images still contain the old localhost address.
 
-On Windows, run `enable-wifi-firewall.ps1` once in administrator PowerShell if inbound access is blocked. It permits this Node app on Wi-Fi, TCP 8787, from the local subnet only. It does not configure router forwarding. Connect the phone and computer to the same Wi-Fi or hotspot, open the Wi-Fi address on the phone, and keep the computer awake with Qori running. If your network isolates connected devices, that router/hotspot setting must allow them to communicate.
+On Windows, run `enable-wifi-firewall.ps1` once in administrator PowerShell if inbound access is blocked. It permits this Node app on Wi-Fi, TCP 8787, from the local subnet only. It does not configure router forwarding. Connect the phone and computer to the same Wi-Fi or hotspot, open the Wi-Fi address on the phone, and keep the computer awake with yourQR running. If your network isolates connected devices, that router/hotspot setting must allow them to communicate.
 
 A Wi-Fi IP address can change when you switch networks or reconnect. A DHCP reservation in your router can keep the computer's address stable for printed codes. This Wi-Fi setup does not require internet hosting or a public domain.
 
@@ -112,23 +112,23 @@ A Wi-Fi IP address can change when you switch networks or reconnect. A DHCP rese
 |---|---|---|
 | Encoded content | The destination URL or text itself | A stable URL such as `https://qr.example.com/r/menu` |
 | Change the destination after printing | Generate and print a new code | Edit the saved destination; the printed code stays valid |
-| Requires Qori to be online when scanned | No | Yes |
-| Qori scan analytics | Unavailable | Redirect visits are recorded |
+| Requires yourQR to be online when scanned | No | Yes |
+| yourQR scan analytics | Unavailable | Redirect visits are recorded |
 | Pause / resume | Unavailable | Supported |
 
 Static content and code type are fixed after creation. You can still edit their name, folder, colors, and logo. For a dynamic code, the slug is fixed after creation while its destination remains editable.
 
-Qori checks URL schemes and color contrast and limits logo size. Always scan the **final downloaded design** on the phones, screen sizes, and printed materials you plan to use. Dense text, decorative colors, printing, and logo overlays can affect readability.
+yourQR checks URL schemes and color contrast and limits logo size. Always scan the **final downloaded design** on the phones, screen sizes, and printed materials you plan to use. Dense text, decorative colors, printing, and logo overlays can affect readability.
 
 ## What runs free, and what needs hosting
 
-All included software features run locally without a subscription, metered QR plan, or external QR generation service. Static QR images can be generated and downloaded locally, then scanned without Qori running. Opening a static website URL still needs access to that website.
+All included software features run locally without a subscription, metered QR plan, or external QR generation service. Static QR images can be generated and downloaded locally, then scanned without yourQR running. Opening a static website URL still needs access to that website.
 
-Dynamic codes and their analytics need a reachable Qori server. `localhost` refers to the device doing the scan: a code containing `http://localhost:8787/...` will not reach your computer from a phone. For testing on your Wi-Fi, bind the API to `0.0.0.0`, set `PUBLIC_BASE_URL` to your computer’s LAN address, restart the API, allow the port through your firewall, and open that address on the phone. Keep this test instance on a trusted network.
+Dynamic codes and their analytics need a reachable yourQR server. `localhost` refers to the device doing the scan: a code containing `http://localhost:8787/...` will not reach your computer from a phone. For testing on your Wi-Fi, bind the API to `0.0.0.0`, set `PUBLIC_BASE_URL` to your computer’s LAN address, restart the API, allow the port through your firewall, and open that address on the phone. Keep this test instance on a trusted network.
 
 For codes shared outside your network, use an always-on host and a **stable public HTTPS address**. A server you own or a hosting provider may be suitable. Hosting and a custom domain can cost money; any free hosting option must support a persistent disk, Node.js, and the uptime you need. A provider-supplied stable hostname can work without buying a custom domain.
 
-Set the permanent public address **before printing dynamic codes**. Qori stores the encoded redirect address with each code. Changing `PUBLIC_BASE_URL` later cannot rewrite images that have already been downloaded or printed. Keep the old address serving those redirects if you move hosts.
+Set the permanent public address **before printing dynamic codes**. yourQR stores the encoded redirect address with each code. Changing `PUBLIC_BASE_URL` later cannot rewrite images that have already been downloaded or printed. Keep the old address serving those redirects if you move hosts.
 
 ## Architecture
 
@@ -178,7 +178,7 @@ The provided Compose file runs one non-root app container and stores SQLite in a
    ```
 
 4. Point that domain’s DNS to your server and allow inbound HTTP/HTTPS traffic for your proxy.
-5. Build and start Qori:
+5. Build and start yourQR:
 
    ```sh
    docker compose up -d --build
@@ -228,14 +228,14 @@ Recovery requires local access to the database and the existing email; it cannot
 - Estimated visitors use a daily rotating, keyed hash of request signals. The secret is stored in your database. Raw IP addresses and complete user-agent strings are not stored in scan events.
 - Visitor totals are approximate daily unique counts summed over the selected period. One person can count again on another day or device; shared networks can undercount.
 - Bots, link previews, and repeated visits may increase totals. Basic bot/preview labels are available, but there is no reliable bot filtering or geolocation in this MVP.
-- Static codes bypass this app when scanned, so Qori cannot measure their scans.
+- Static codes bypass this app when scanned, so yourQR cannot measure their scans.
 - Scan records persist until their code is deleted. Publish any privacy notice your intended deployment needs.
 
 ## Authentication and scope
 
 Passwords use salted scrypt hashes. Sessions use random opaque tokens, store only token hashes in SQLite, and expire after seven days. Cookies are HttpOnly and SameSite; production HTTPS uses secure cookies. Mutating API requests check origins, login/setup attempts are throttled, inputs are validated, and database queries use bound parameters.
 
-The owner can manage all saved records. Public visitors can only follow enabled dynamic redirects. There is no public registration after initial setup, no multi-user sharing, and no separate administrator role. Qori is an MVP for personal use; backups, host updates, availability, and access to your server remain part of operating it.
+The owner can manage all saved records. Public visitors can only follow enabled dynamic redirects. There is no public registration after initial setup, no multi-user sharing, and no separate administrator role. yourQR is an MVP for personal use; backups, host updates, availability, and access to your server remain part of operating it.
 
 ## API overview
 
@@ -298,6 +298,6 @@ The `saas-development` branch introduces self-serve user accounts and tenant-sco
 - In a real production SaaS, registration requires email verification and uses the Resend REST API. Configure `RESEND_API_KEY` and `MAIL_FROM` privately on the server and use a stable HTTPS `PUBLIC_BASE_URL`. Password recovery links expire after 30 minutes and revoke account sessions.
 - The PostgreSQL importer is for testing the move of existing data. **The current runtime remains SQLite** until the backend database adapter is migrated. Do not switch traffic or remove SQLite data after import.
 
-### PostgreSQL-backed Qori (Phase 2B)
+### PostgreSQL-backed yourQR (Phase 2B)
 
 Set an untracked `DATABASE_URL` and keep `PUBLIC_BASE_URL` at your stable origin to run the API with PostgreSQL. All API/redirect routes use the selected database; the SQLite code path remains supported when `DATABASE_URL` is unset. Both are exercised by CI. Consult [the PostgreSQL cutover and rollback runbook](db/postgres/README.md) before migrating existing QR links or data. No production deployment has been performed.

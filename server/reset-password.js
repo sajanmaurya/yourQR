@@ -6,7 +6,7 @@ const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const email = String(process.env.RESET_EMAIL || '').trim().toLowerCase();
 const password = process.env.RESET_PASSWORD || '';
 if (!email || password.length < 12 || password.length > 256) {
-  console.error('Stop Qori first. Set RESET_EMAIL to the owner email and RESET_PASSWORD to a new 12–256 character password, then run this command again.');
+  console.error('Stop yourQR first. Set RESET_EMAIL to the owner email and RESET_PASSWORD to a new 12–256 character password, then run this command again.');
   process.exit(1);
 }
 const db = openDatabase(path.resolve(appRoot, process.env.DB_PATH || 'data/qori.sqlite'));
@@ -20,7 +20,7 @@ try {
     db.exec('DELETE FROM sessions');
     db.exec('COMMIT');
   } catch (error) { db.exec('ROLLBACK'); throw error; }
-  console.log('Owner password changed. All sessions were signed out. Clear RESET_PASSWORD from your environment before restarting Qori.');
+  console.log('Owner password changed. All sessions were signed out. Clear RESET_PASSWORD from your environment before restarting yourQR.');
 } catch (error) {
   console.error(error.message);
   process.exitCode = 1;

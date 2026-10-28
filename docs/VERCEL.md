@@ -1,8 +1,8 @@
-# Qori on Vercel: staging checklist
+# yourQR on Vercel: staging checklist
 
 ## Hosting decision
 
-Qori's **React/Vite frontend and Node.js/Express API** will be deployed in a single Vercel project, connecting to managed Neon PostgreSQL. The repository is **prepared**, but is **not linked to your Vercel account or deployed yet**. Work in the `saas-development` branch / draft PR.
+yourQR's **React/Vite frontend and Node.js/Express API** will be deployed in a single Vercel project, connecting to managed Neon PostgreSQL. The repository is **prepared**, but is **not linked to your Vercel account or deployed yet**. Work in the `saas-development` branch / draft PR.
 
 Vercel recognizes the root `index.js` default export as an Express entrypoint. It runs in a Vercel Function; `npm run build:vercel` builds the Vite client and stages it to `public/` for Vercel's CDN. No `app.listen()` is called in that serverless entrypoint. Vercel ignores `express.static()`, so Vite assets cannot be served from Express there.
 
@@ -16,7 +16,7 @@ Vercel recognizes the root `index.js` default export as an Express entrypoint. I
    - `SAAS_MODE=true` (only once verified login setup, terms, and abuse protections are ready).
    - `RESEND_API_KEY`, `MAIL_FROM` = verified sender account, required for production SaaS registration.
    - Keep `COOKIE_SECURE=true`. `TRUST_PROXY` depends on deployment network trust, default 0 unless verified.
-4. Ensure no existing active QR references assets larger than 4 MB. Vercel Functions have a **4.5MB input/output ceiling**. Qori currently stores uploaded media as DB bytes, so **20MB uploads and serving >4MB files are blocked on Vercel until Cloudflare R2 direct upload and delivery are implemented**.
+4. Ensure no existing active QR references assets larger than 4 MB. Vercel Functions have a **4.5MB input/output ceiling**. yourQR currently stores uploaded media as DB bytes, so **20MB uploads and serving >4MB files are blocked on Vercel until Cloudflare R2 direct upload and delivery are implemented**.
 5. Deploy a **private test preview**, confirm Vercel Express function detection, static page/assets, HTTPS cookies, email confirmation, two-account isolation, dynamic QR GET vs HEAD, scan history, and file previews.
 6. Set up monitoring, database backups + restore rehearsal, anti-abuse policies and stable DNS **before** any public paid launch. Test previously printed QR destinations and migration rollback.
 
@@ -26,8 +26,8 @@ GitHub CI executes `npm test`, `npm run build` (SQLite regression suite), Postgr
 
 ## Free vs commercial
 
-Vercel's free Hobby tier is for **personal/non-commercial** use. Plan for a paid, commercially permitted Vercel tier for the customer-facing SaaS. Database quotas, function invocation billing and bandwidth apply. Do not publish Qori as a paid SaaS on Hobby.
+Vercel's free Hobby tier is for **personal/non-commercial** use. Plan for a paid, commercially permitted Vercel tier for the customer-facing SaaS. Database quotas, function invocation billing and bandwidth apply. Do not publish yourQR as a paid SaaS on Hobby.
 
 ## Blank screen / frontend asset diagnostics
 
-When the HTML title loads but the page is entirely blank, inspect Network for the Vite JS and CSS URLs under `/assets/`. Qori's Express entrypoint has a fallback route that serves the hashed `dist/assets` files directly with JavaScript/CSS MIME types, and `vercel.json` includes those files in the Function bundle. Vercel's `public/` remains the preferred static CDN location. A 9-second inline fallback replaces an otherwise completely white screen when React fails to mount. Keep Function and CDN artifacts in sync after changing the Vite build.
+When the HTML title loads but the page is entirely blank, inspect Network for the Vite JS and CSS URLs under `/assets/`. yourQR's Express entrypoint has a fallback route that serves the hashed `dist/assets` files directly with JavaScript/CSS MIME types, and `vercel.json` includes those files in the Function bundle. Vercel's `public/` remains the preferred static CDN location. A 9-second inline fallback replaces an otherwise completely white screen when React fails to mount. Keep Function and CDN artifacts in sync after changing the Vite build.

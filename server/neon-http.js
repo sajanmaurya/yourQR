@@ -15,7 +15,7 @@ export function openNeonHttpDatabase(connectionString, options = {}) {
     for (let level = 0; cause && level < 3; level++, cause = cause.cause) {
       details.push({ type: cause.name || 'Error', code: cause.code || null, message: String(cause.message || '').slice(0, 180) });
     }
-    console.error('Qori Neon HTTPS error diagnostics:', JSON.stringify(details));
+    console.error('yourQR Neon HTTPS error diagnostics:', JSON.stringify(details));
     throw error;
   };
   const execute = (source, args) => sql.query(postgresSQL(source), args, { fullResults: true }).catch(inspectNetworkFailure);

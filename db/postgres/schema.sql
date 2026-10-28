@@ -1,4 +1,4 @@
--- PostgreSQL schema for a future Qori SaaS runtime.
+-- PostgreSQL schema for a future yourQR SaaS runtime.
 -- Phase 2 migration target; the Express application still uses SQLite until the
 -- database adapter and production cutover are explicitly completed.
 CREATE TABLE IF NOT EXISTS owner (

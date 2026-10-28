@@ -19,7 +19,7 @@ try {
   db.prepare('INSERT INTO assets(id,kind,name,mime,size,bytes,created_at,owner_key) VALUES(?,?,?,?,?,?,?,?)')
     .run('asset-1','pdf','Menu "small".pdf','application/pdf',8,Buffer.from([0,1,2,3,4,5,255,10]),now,'account-a');
   db.prepare('INSERT INTO qr_codes(id,name,type,content_type,destination,encoded_value,slug,fg_color,bg_color,folder_id,active,created_at,updated_at,category,payload_json,asset_id,owner_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)')
-    .run('qr-1','Menu','dynamic','url','https://example.org/menu','https://qori.example/r/menu','menu','#000000','#FFFFFF','folder-1',1,now,now,'pdf','{}','asset-1','account-a');
+    .run('qr-1','Menu','dynamic','url','https://example.org/menu','https://yourQR.example/r/menu','menu','#000000','#FFFFFF','folder-1',1,now,now,'pdf','{}','asset-1','account-a');
   db.prepare('INSERT INTO scans(id,qr_id,scanned_at,visitor_hash,device,referrer) VALUES(?,?,?,?,?,?)')
     .run('scan-1','qr-1',now,'hash-1','Mobile','Direct');
   db.prepare('INSERT INTO sessions(token_hash,owner_id,expires_at) VALUES(?,?,?)').run('legacy-token',1,Date.now()+86400000);

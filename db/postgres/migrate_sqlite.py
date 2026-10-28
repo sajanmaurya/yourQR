@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
-"""Snapshot a Qori SQLite workspace and COPY it transactionally into an EMPTY PostgreSQL database.
+"""Snapshot a yourQR SQLite workspace and COPY it transactionally into an EMPTY PostgreSQL database.
 
 Requirements: Python 3 stdlib, psql command-line client, PostgreSQL server.
-The running Qori API continues using SQLite until a separate adapter/cutover is built.
+The running yourQR API continues using SQLite until a separate adapter/cutover is built.
 """
 import argparse
 import os
@@ -56,7 +56,7 @@ def main():
     if not args.dry_run and not shutil.which("psql"):
         parser.error("Install the PostgreSQL psql CLI first.")
     schema = Path(__file__).parent / "schema.sql"
-    with tempfile.TemporaryDirectory(prefix="qori-pg-migration-") as temporary:
+    with tempfile.TemporaryDirectory(prefix="yourQR-pg-migration-") as temporary:
         directory = Path(temporary)
         db_path = directory / "source.sqlite"
         snapshot(args.sqlite, db_path)

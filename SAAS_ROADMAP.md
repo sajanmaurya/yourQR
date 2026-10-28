@@ -1,4 +1,4 @@
-# Qori SaaS foundation status
+# yourQR SaaS foundation status
 
 ## Implemented on saas-development
 

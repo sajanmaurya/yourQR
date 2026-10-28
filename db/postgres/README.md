@@ -1,4 +1,4 @@
-# Qori PostgreSQL data migration (development only)
+# yourQR PostgreSQL data migration (development only)
 
 This folder contains the **PostgreSQL schema and snapshot importer** for the future SaaS application. The current Express app still uses SQLite. A successful import does not switch runtime storage.
 
@@ -35,7 +35,7 @@ The Express application can now use a PostgreSQL database when `DATABASE_URL` is
 ### Local empty-database startup
 
 1. Create an empty local PostgreSQL database and a least-privileged dedicated role with schema creation privileges.
-2. Put `DATABASE_URL=postgresql://qori:<password>@127.0.0.1:5432/qori` in your **untracked** `.env`. Use `?sslmode=require` and the provider's validated CA settings for remote production.
+2. Put `DATABASE_URL=postgresql://yourQR:<password>@127.0.0.1:5432/yourQR` in your **untracked** `.env`. Use `?sslmode=require` and the provider's validated CA settings for remote production.
 3. Set `SAAS_MODE=true`. Use `NODE_ENV=development` for a trusted local test, or configure `RESEND_API_KEY`, `MAIL_FROM`, HTTPS `PUBLIC_BASE_URL`, and secure cookies for production.
 4. `npm ci && npm run build && npm start`. Startup creates the necessary schema and fails closed if PostgreSQL is unavailable. `GET /api/settings` reports `database: PostgreSQL` to signed-in users.
 5. Create accounts and QR codes in the browser. All QR operations, file uploads, sessions, analytics and public redirects now execute against PostgreSQL.
@@ -45,7 +45,7 @@ The Express application can now use a PostgreSQL database when `DATABASE_URL` is
 **Do not run PostgreSQL with an existing public URL until these checks pass.**
 
 1. Back up the original **stopped** SQLite database (including WAL/shm files). Test restoring it. Back up the destination PostgreSQL database too.
-2. Freeze writes and redirects to the old Qori instance during final cutover. A snapshot while writes continue may miss later scans or QR changes. Arrange a maintenance window.
+2. Freeze writes and redirects to the old yourQR instance during final cutover. A snapshot while writes continue may miss later scans or QR changes. Arrange a maintenance window.
 3. Create a **new empty** PostgreSQL database. Run:
    ```bash
    python3 db/postgres/migrate_sqlite.py --sqlite data/qori.sqlite --dry-run

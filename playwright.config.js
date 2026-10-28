@@ -3,7 +3,7 @@ import path from 'node:path';
 import os from 'node:os';
 import { mkdirSync, mkdtempSync } from 'node:fs';
 
-const testDirectory = process.env.QORI_E2E_DIR || mkdtempSync(path.join(os.tmpdir(), 'qori-browser-'));
+const testDirectory = process.env.QORI_E2E_DIR || mkdtempSync(path.join(os.tmpdir(), 'yourQR-browser-'));
 mkdirSync(testDirectory, { recursive: true });
 
 export default defineConfig({
