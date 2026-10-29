@@ -28,6 +28,12 @@ GitHub CI executes `npm test`, `npm run build` (SQLite regression suite), Postgr
 
 Vercel's free Hobby tier is for **personal/non-commercial** use. Plan for a paid, commercially permitted Vercel tier for the customer-facing SaaS. Database quotas, function invocation billing and bandwidth apply. Do not publish yourQR as a paid SaaS on Hobby.
 
-## Blank screen / frontend asset diagnostics
+## Selecting the redesigned deployment branch
+
+The pearl-white glass interface is available on `saas-development`, together with the Express entrypoint, PostgreSQL support and `build:vercel` script. Create the Vercel deployment from this branch. A deployment log that says `Branch: main` is building a different application configuration; redeploying that same commit will not switch branches.
+
+Keep framework **Express**, repository-root working directory, and build command `npm run build:vercel`. If this branch should serve the production domain, update the project's production branch in Vercel before creating that deployment. Otherwise, create a preview deployment using `saas-development` as the Git reference. Preserve the project's existing server-side environment bindings, and confirm they are assigned to the selected deployment environment. Local build verification does not confirm Vercel account settings, live database connectivity or deployment success.
+
+## Frontend asset fallback
 
 When the HTML title loads but the page is entirely blank, inspect Network for the Vite JS and CSS URLs under `/assets/`. yourQR's Express entrypoint has a fallback route that serves the hashed `dist/assets` files directly with JavaScript/CSS MIME types, and `vercel.json` includes those files in the Function bundle. Vercel's `public/` remains the preferred static CDN location. A 9-second inline fallback replaces an otherwise completely white screen when React fails to mount. Keep Function and CDN artifacts in sync after changing the Vite build.
