@@ -231,11 +231,38 @@ Recovery requires local access to the database and the existing email; it cannot
 - Static codes bypass this app when scanned, so yourQR cannot measure their scans.
 - Scan records persist until their code is deleted. Publish any privacy notice your intended deployment needs.
 
+## SaaS sign-up in a Vercel Preview
+
+The default `SAAS_MODE=false` is a deliberately private, first-owner workspace:
+once an owner exists, it has **no public registration**. A signup form cannot
+create additional users until SaaS mode is enabled.
+
+To test multi-account signup in **Vercel Preview** without an email-sending
+service, keep Vercel Deployment Protection (SSO) enabled, then configure the
+following values in the branch-scoped Preview environment:
+
+```env
+SAAS_MODE=true
+PREVIEW_UNVERIFIED_SIGNUP=true
+```
+
+Keep the existing branch-specific `DATABASE_URL` and `PUBLIC_BASE_URL`,
+then redeploy the preview branch. This exception is honored **only** when
+Vercel sets `VERCEL=1` and `VERCEL_ENV=preview`. It does not bypass email
+verification for a production deployment. Do not make a preview that allows
+unverified signup publicly accessible.
+
+For public-facing production signup, configure `SAAS_MODE=true` and verified
+sender credentials `RESEND_API_KEY` and `MAIL_FROM`. New accounts receive
+an email verification link before they can sign in. Never enable production
+SaaS without those settings, and keep separate databases for production and
+preview. Registration is off by default.
+
 ## Authentication and scope
 
 Passwords use salted scrypt hashes. Sessions use random opaque tokens, store only token hashes in SQLite, and expire after seven days. Cookies are HttpOnly and SameSite; production HTTPS uses secure cookies. Mutating API requests check origins, login/setup attempts are throttled, inputs are validated, and database queries use bound parameters.
 
-The owner can manage all saved records. Public visitors can only follow enabled dynamic redirects. There is no public registration after initial setup, no multi-user sharing, and no separate administrator role. yourQR is an MVP for personal use; backups, host updates, availability, and access to your server remain part of operating it.
+The owner can manage all saved records. Public visitors can only follow enabled dynamic redirects. Public registration is disabled by default in personal mode; optional SaaS mode adds separate user accounts and workspace data. Shared team administration is not implemented. yourQR is an MVP for personal use; backups, host updates, availability, and access to your server remain part of operating it.
 
 ## API overview
 
