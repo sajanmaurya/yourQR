@@ -9,6 +9,7 @@ import { randomBytes, randomUUID, createHash, createHmac, timingSafeEqual } from
 import { openDatabase, hashPassword, verifyPassword } from './database.js';
 import { openPostgresDatabase } from './postgres.js';
 import { openNeonHttpDatabase } from './neon-http.js';
+import { needsEmailVerification } from './verification-policy.js';
 import { contentType as getContentType } from '../shared/content-types.js';
 import { resolveContent } from './content.js';
 import { registerAssets, mapAsset } from './assets.js';
@@ -47,7 +48,14 @@ export function createApp(options = {}) {
   }
   const environment = options.environment ?? process.env.NODE_ENV ?? 'development';
   const saasMode = options.saasMode ?? (process.env.SAAS_MODE === 'true');
-  const verificationRequired = saasMode && (environment === 'production' || options.requireEmailVerification === true);
+  const verificationRequired = needsEmailVerification({
+    saasMode,
+    environment,
+    vercel: process.env.VERCEL,
+    vercelEnv: process.env.VERCEL_ENV,
+    unverifiedPreviewOptIn: process.env.PREVIEW_UNVERIFIED_SIGNUP,
+    forceVerification: options.requireEmailVerification === true,
+  });
   const emailSender = options.emailSender || (async ({ to, url, purpose = 'verify' }) => {
     if (!process.env.RESEND_API_KEY || !process.env.MAIL_FROM) throw new Error('Email service is not configured.');
     const response = await fetch('https://api.resend.com/emails', {
