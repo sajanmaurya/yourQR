@@ -120,8 +120,7 @@ export function createApp(options = {}) {
 
   app.get('/api/health', (req, res) => res.json({ status: 'ok', version: '1.0.0' }));
   app.get('/api/auth/session', async (req, res) => {
-    const anyUser = await dbGet(db, 'SELECT id FROM users LIMIT 1');
-    res.json({ authenticated: Boolean(req.user), setupRequired: !anyUser, user: req.user || null, config: config() });
+    res.json({ authenticated: Boolean(req.user), setupRequired: false, user: req.user || null, config: config() });
   });
   app.post(['/api/auth/register', '/api/auth/setup'], limitAuth, async (req, res) => {
     const name = textField(req.body?.name, 'Name', 80);

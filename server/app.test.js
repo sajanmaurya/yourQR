@@ -51,7 +51,7 @@ async function createQR(f, props = {}) {
 test('registration, protected API, login, CSRF checks, logout, and duplicate email protection', async (t) => {
   const f = await fixture(); t.after(f.close);
   const initial = await f.json('/api/auth/session');
-  assert.equal(initial.body.setupRequired, true);
+  assert.equal(initial.body.setupRequired, false);
   assert.equal(initial.body.authenticated, false);
   assert.equal((await f.api('/api/qrs')).status, 401);
   assert.equal((await f.json('/api/auth/setup', { method: 'POST', body: { ...owner, password: 'short' } })).status, 400);
