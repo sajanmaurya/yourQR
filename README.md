@@ -1,10 +1,10 @@
 # Qori
 
-A personal, self-hostable QR code workspace. Create attractive codes, keep them in folders, change a dynamic code’s destination after printing, and see visits to your redirect links. Qori uses its own design and assets; it is inspired by the QR management workflow, with no ME-QR branding or proprietary assets.
+A multi-user, self-hostable QR code workspace. Every person can create an account with a private library, folders, files, and analytics. Qori uses its own design and assets; it is inspired by the QR management workflow, with no ME-QR branding or proprietary assets.
 
 ## What is included
 
-- One personal owner account, first-run setup, login and logout. There are no shared default credentials.
+- Public email/password registration, login and logout, with a separate private workspace for every account.
 - Saved static URL/text codes and dynamic URL codes.
 - All 19 QR types visible in the reference screenshot: URL, PDF, image, Play Market / App Store, text, WhatsApp, YouTube, Instagram, Facebook, Telegram, vCard, map, Wi-Fi, audio, email, booking, phone call, PPTX, and Smart QR.
 - Stable redirect slugs, editable dynamic destinations, and pause/resume.
@@ -79,7 +79,7 @@ npm run build
 npm start
 ```
 
-Open **[http://localhost:8787](http://localhost:8787)**. Create your owner account on the first screen; use a password with at least 12 characters. Your codes, folders, sessions, and analytics are stored in `data/qori.sqlite`.
+Open **[http://localhost:8787](http://localhost:8787)**. Select **Create an account** and use a password with at least 12 characters. Each account sees only its own codes, folders, files, sessions, and analytics; local data is stored in `data/qori.sqlite`.
 
 For development with automatic reload:
 
@@ -132,12 +132,12 @@ Set the permanent public address **before printing dynamic codes**. Qori stores 
 
 ## Vercel hosted trial
 
-The Vercel configuration supports a **single personal workspace trial**. Vercel serves the React files, runs the Express API as a Function, Neon Postgres keeps the account/codes/folders/analytics, and private Vercel Blob stores uploaded PDFs and other files. The Vercel Function's local filesystem is not used for permanent data. Existing SQLite data and PDF files are not automatically copied to the hosted database; the hosted trial starts empty.
+The Vercel configuration supports a **multi-user hosted trial**. Vercel serves the React files, runs the Express API as a Function, Neon Postgres keeps accounts/codes/folders/analytics, and private Vercel Blob stores uploaded PDFs and other files. The Vercel Function's local filesystem is not used for permanent data. Existing SQLite data and PDF files are not automatically copied to the hosted database.
 
 1. Import `sajanmaurya/yourQR` into Vercel and select `vercel-beta` as the Production Branch in Project Settings. Use the repository root, the **Express** framework preset, Node **24.x**, and `npm run build`. Leave Output Directory at the framework default; do not override it to `dist` or choose the Vite preset. The root `index.js` serves the API and the build copies browser files into `public/` for Vercel’s CDN.
 2. Create a Neon Postgres database and a **private** Vercel Blob store, then link the Blob store to the Vercel project.
-3. In Vercel Project Settings → Environment Variables, configure `DATABASE_URL` with the **Neon** connection string, `PUBLIC_BASE_URL` with the final stable HTTPS domain (for a first test, use the stable production Vercel domain), and a long random `SETUP_TOKEN`. Set `TRUST_PROXY=1` and `NODE_ENV=production`. Confirm the linked private store supplies `BLOB_READ_WRITE_TOKEN`. Do not copy your local `.env`: its localhost address and SQLite settings are for local use. Use separate database and Blob stores for previews; never point unreviewed previews at the live workspace.
-4. Deploy, open the production URL, and create the personal owner account using the setup token. Remove `SETUP_TOKEN` from the Vercel environment after setup and redeploy. Keep the owner password private.
+3. In Vercel Project Settings → Environment Variables, configure `DATABASE_URL` with the **Neon** connection string and `PUBLIC_BASE_URL` with the final stable HTTPS domain. Set `TRUST_PROXY=1` and `NODE_ENV=production`. Confirm the linked private store supplies `BLOB_READ_WRITE_TOKEN`. Use separate database and Blob stores for previews; never point unreviewed previews at live customer data.
+4. Deploy, open the production URL, create two test accounts, and verify that neither can view or modify the other account’s data.
 5. Open `/api/health`, then create a test PDF QR code (also try a PDF larger than 4.5 MB), scan it from a phone on mobile data, replace the PDF, and verify the same QR slug opens the replacement. Pause the code and check that both its redirect and file link stop working. Check analytics, PNG/SVG downloads, logout/login, and persistence after redeploying before distributing codes. Public QR redirects must be reachable without Vercel deployment-protection login; Qori’s dashboard still requires the owner login.
 
 Uploads go directly from the signed-in browser to private Blob using a short-lived, size-limited permission for one unique path. The API validates the file before attaching it to the library. Retrying finalization returns the same asset. Downloads are streamed through Qori with active-code checks and byte-range support. Hosted login throttling is stored in Postgres so it survives Function restarts.
@@ -146,7 +146,7 @@ Back up both Neon and Blob; the JSON library export is not a full backup. Hosted
 
 The Vercel adapter uses Postgres and Blob only when running on Vercel; local and Docker installs keep SQLite-backed uploads. Vercel/Neon/Blob usage may incur charges after provider allowances. Check current provider pricing and set spending alerts before inviting anyone. Vercel projects can deploy previews for branches, but the `PUBLIC_BASE_URL` used to encode new QR codes must remain stable; do not create printed codes from a temporary preview URL.
 
-This is not yet a public SaaS launch: there is one owner account, no public registration, email verification, password reset email, subscriptions, or multi-customer tenant isolation. Keep the Vercel project private to your own use until those product and operations features are implemented and reviewed.
+Account registration and tenant-level data isolation are implemented. Before a full commercial launch, add email verification, email-based password reset, abuse controls/CAPTCHA, subscriptions and quotas, privacy/terms pages, account deletion, database backups, monitoring, and an external security review.
 
 ## Architecture
 
@@ -163,7 +163,7 @@ Express API ─────── Vercel Function
 
 The frontend lives in `client/`. Express and data access live in `server/`. Vite builds the frontend into `dist/`; the Vercel build copies it into `public/` for CDN delivery. The browser and API share one origin; no separate CORS configuration or browser database key is required.
 
-This MVP uses SQLite via Node’s built-in `node:sqlite` locally, and an initial PostgreSQL adapter for the Vercel trial. Both retain the single-owner model. A larger multi-user service still needs tenant-level authorization, email and account recovery, data migrations, operational controls, and more extensive security review.
+This MVP uses SQLite via Node’s built-in `node:sqlite` locally and PostgreSQL on Vercel. Account IDs scope folders, uploaded assets, QR codes, analytics, exports, and direct-object mutations. Existing single-owner data is migrated into the first user automatically. A market launch still needs verified email and recovery flows plus operational and security controls.
 
 QR generation runs on your own server. It does not send destinations, uploaded logos, or analytics to a QR vendor. The server redirects visitors to the destination you selected; normal destination-site traffic is separate.
 
@@ -178,13 +178,12 @@ The supplied npm commands load `.env` automatically. Existing environment variab
 | `PUBLIC_BASE_URL` | `http://localhost:8787`; permanent address encoded into new dynamic QR codes |
 | `DB_PATH` | `./data/qori.sqlite`, relative to this app folder |
 | `NODE_ENV` | `development`; use `production` behind HTTPS |
-| `SETUP_TOKEN` | Optional for local setup, required for first-owner setup in production. Enter it in the setup screen. |
 | `TRUST_PROXY` | `0`; use `1` only when one trusted reverse proxy is the only route to the app |
 | `COOKIE_SECURE` | Automatically enabled for an HTTPS public URL; may be set explicitly to `true` or `false` |
 | `DATABASE_URL` | Vercel only; PostgreSQL connection string from Neon |
 | `BLOB_READ_WRITE_TOKEN` | Vercel only; supplied by linking the private Blob store to the project |
 
-Use a long random `SETUP_TOKEN` before publishing a fresh instance. Without a token, development setup accepts only local loopback access. After creating the owner, the setup endpoint cannot create another account. Keep `.env` private and outside version control.
+Registration is public. Keep `.env` private and outside version control, enforce HTTPS, and add email verification plus bot protection before a broad public launch.
 
 ## Self-host with Docker and HTTPS
 
@@ -192,24 +191,17 @@ The provided Compose file runs one non-root app container and stores SQLite in a
 
 1. Copy `.env.example` to `.env`.
 2. Set `PUBLIC_BASE_URL=https://qr.example.com` to your real address.
-3. Set a long random `SETUP_TOKEN`. This command can generate one:
-
-   ```sh
-   node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
-   ```
-
-4. Point that domain’s DNS to your server and allow inbound HTTP/HTTPS traffic for your proxy.
-5. Build and start Qori:
+3. Point that domain’s DNS to your server and allow inbound HTTP/HTTPS traffic for your proxy.
+4. Build and start Qori:
 
    ```sh
    docker compose up -d --build
    ```
 
-6. Install Caddy on the host, copy `Caddyfile.example` into your Caddy configuration, replace the example domain, and reload Caddy. It proxies to `127.0.0.1:8787` and manages HTTPS for a correctly configured public domain.
-7. Open your HTTPS URL and create the owner using the setup token.
-8. After owner setup, remove the `SETUP_TOKEN` value from `.env` and run `docker compose up -d` again. The existing account remains; the setup endpoint cannot create a second owner. A new production instance refuses to start without a setup token.
+5. Install Caddy on the host, copy `Caddyfile.example` into your Caddy configuration, replace the example domain, and reload Caddy. It proxies to `127.0.0.1:8787` and manages HTTPS for a correctly configured public domain.
+6. Open your HTTPS URL and create a test account.
 
-The Compose file sets production mode, a container bind address, secure cookies, and a single trusted proxy. Its `PUBLIC_BASE_URL` and initial `SETUP_TOKEN` values come from `.env`. If you use a different proxy topology, update the proxy setting deliberately. With this default Compose configuration, visiting the loopback HTTP port directly will not support login because the session cookie requires HTTPS; use your public HTTPS URL.
+The Compose file sets production mode, a container bind address, secure cookies, and a single trusted proxy. If you use a different proxy topology, update the proxy setting deliberately. With this default Compose configuration, visiting the loopback HTTP port directly will not support login because the session cookie requires HTTPS; use your public HTTPS URL.
 
 For an installation without Docker, run `npm ci`, `npm run build`, and `npm start` under a service manager. Use production settings, a persistent `data/` folder, one app process, and the same reverse-proxy arrangement. Never expose a fresh development instance as a public service.
 

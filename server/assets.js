@@ -78,14 +78,14 @@ export function registerAssets(app, db, blobStore = { get: getBlob, del: deleteB
       const meta = contentType(req.body?.type);
       if (!meta?.file) throw new ValidationError('Choose PDF, image, audio, or PPTX.');
       const id = randomUUID(), name = cleanName(req.body?.name);
-      const pathname = 'assets/owner-1/' + id + '/' + name.replace(/[^a-zA-Z0-9._ -]/g, '_');
-      await dbRun(db, 'INSERT INTO upload_intents(id,pathname,kind,name,expires_at) VALUES(?,?,?,?,?)', [id, pathname, meta.id, name, Date.now() + 3600000]);
+      const pathname = 'assets/user-' + req.user.id + '/' + id + '/' + name.replace(/[^a-zA-Z0-9._ -]/g, '_');
+      await dbRun(db, 'INSERT INTO user_upload_intents(id,user_id,pathname,kind,name,expires_at) VALUES(?,?,?,?,?,?)', [id, req.user.id, pathname, meta.id, name, Date.now() + 3600000]);
       res.status(201).json({ pathname });
     });
     app.post('/api/assets/upload-token', async (req, res) => {
       const result = await blobStore.handleUpload({ body: req.body, request: req, onBeforeGenerateToken: async pathname => {
-        const intent = await dbGet(db, 'SELECT * FROM upload_intents WHERE pathname=? AND expires_at>?', [pathname, Date.now()]);
-        if (!intent || await dbGet(db, 'SELECT id FROM assets WHERE blob_path=?', [pathname])) throw new ValidationError('Start a new upload. This upload permission has expired or was already used.');
+        const intent = await dbGet(db, 'SELECT * FROM user_upload_intents WHERE pathname=? AND user_id=? AND expires_at>?', [pathname, req.user.id, Date.now()]);
+        if (!intent || await dbGet(db, 'SELECT id FROM user_assets WHERE blob_path=?', [pathname])) throw new ValidationError('Start a new upload. This upload permission has expired or was already used.');
         const meta = contentType(intent.kind);
         return {
           allowedContentTypes: ['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'audio/mpeg', 'audio/wav', 'audio/ogg', 'application/vnd.openxmlformats-officedocument.presentationml.presentation', 'application/octet-stream'],
@@ -98,9 +98,9 @@ export function registerAssets(app, db, blobStore = { get: getBlob, del: deleteB
     app.post('/api/assets/finalize', async (req, res) => {
       const pathname = req.body?.pathname;
       if (typeof pathname !== 'string') throw new ValidationError('This upload could not be verified.');
-      const existing = await dbGet(db, 'SELECT * FROM assets WHERE blob_path=?', [pathname]);
+      const existing = await dbGet(db, 'SELECT * FROM user_assets WHERE blob_path=? AND user_id=?', [pathname, req.user.id]);
       if (existing) return res.json({ asset: mapAsset(existing) });
-      const intent = await dbGet(db, 'SELECT * FROM upload_intents WHERE pathname=? AND expires_at>?', [pathname, Date.now()]);
+      const intent = await dbGet(db, 'SELECT * FROM user_upload_intents WHERE pathname=? AND user_id=? AND expires_at>?', [pathname, req.user.id, Date.now()]);
       if (!intent) throw new ValidationError('Start a new upload. This upload permission has expired.');
       const blob = await blobStore.get(pathname, { access: 'private' });
       if (!blob) throw new ValidationError('Uploaded file not found. Please upload it again.', 404);
@@ -113,9 +113,9 @@ export function registerAssets(app, db, blobStore = { get: getBlob, del: deleteB
       }
       const file = await validateFile(intent.kind, Buffer.concat(parts), intent.name, true);
       // The intent ID and unique blob path make retries and simultaneous finalizations safe.
-      await dbRun(db, 'INSERT INTO assets(id,kind,name,mime,size,bytes,blob_path,created_at) VALUES(?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING',
-        [intent.id, intent.kind, file.name, file.mime, file.bytes.length, null, pathname, new Date().toISOString()]);
-      res.status(201).json({ asset: mapAsset(await dbGet(db, 'SELECT * FROM assets WHERE id=?', [intent.id])) });
+      await dbRun(db, 'INSERT INTO user_assets(id,user_id,kind,name,mime,size,bytes,blob_path,created_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(id) DO NOTHING',
+        [intent.id, req.user.id, intent.kind, file.name, file.mime, file.bytes.length, null, pathname, new Date().toISOString()]);
+      res.status(201).json({ asset: mapAsset(await dbGet(db, 'SELECT * FROM user_assets WHERE id=? AND user_id=?', [intent.id, req.user.id])) });
     });
   }
   app.post('/api/assets', (req, res, next) => {
@@ -127,14 +127,14 @@ export function registerAssets(app, db, blobStore = { get: getBlob, del: deleteB
     const kind = req.query.type;
     const file = await validateFile(kind, req.body, name);
     const id = randomUUID(), createdAt = new Date().toISOString();
-    await dbRun(db, 'INSERT INTO assets(id,kind,name,mime,size,bytes,created_at) VALUES(?,?,?,?,?,?,?)', [id, kind, file.name, file.mime, file.bytes.length, file.bytes, createdAt]);
-    await dbRun(db, 'DELETE FROM assets WHERE created_at < ? AND id NOT IN (SELECT asset_id FROM qr_codes WHERE asset_id IS NOT NULL)', [new Date(Date.now() - 86400000).toISOString()]);
+    await dbRun(db, 'INSERT INTO user_assets(id,user_id,kind,name,mime,size,bytes,created_at) VALUES(?,?,?,?,?,?,?,?)', [id, req.user.id, kind, file.name, file.mime, file.bytes.length, file.bytes, createdAt]);
+    await dbRun(db, 'DELETE FROM user_assets WHERE user_id=? AND created_at < ? AND id NOT IN (SELECT asset_id FROM user_qr_codes WHERE asset_id IS NOT NULL)', [req.user.id, new Date(Date.now() - 86400000).toISOString()]);
     res.status(201).json({ asset: { id, kind, name: file.name, mime: file.mime, size: file.bytes.length, createdAt } });
   });
   app.delete('/api/assets/:id', async (req, res) => {
-    if (await dbGet(db, 'SELECT id FROM qr_codes WHERE asset_id=?', [req.params.id])) throw new ValidationError('This file is used by a QR code. Replace or delete that code first.', 409);
+    if (await dbGet(db, 'SELECT id FROM user_qr_codes WHERE asset_id=? AND user_id=?', [req.params.id, req.user.id])) throw new ValidationError('This file is used by a QR code. Replace or delete that code first.', 409);
     let row;
-    try { row = await dbGet(db, 'DELETE FROM assets WHERE id=? RETURNING blob_path', [req.params.id]); }
+    try { row = await dbGet(db, 'DELETE FROM user_assets WHERE id=? AND user_id=? RETURNING blob_path', [req.params.id, req.user.id]); }
     catch (error) { if (error.code === '23503' || String(error.message).includes('FOREIGN KEY')) throw new ValidationError('This file is used by a QR code.', 409); throw error; }
     // Remove the DB reference first: its foreign key prevents a concurrent QR save from referencing a deleted file.
     if (row?.blob_path) {
@@ -179,12 +179,12 @@ export function registerAssets(app, db, blobStore = { get: getBlob, del: deleteB
     await pipeline(Readable.from(chunks()), res);
   };
   app.get('/api/assets/:id/content', async (req, res) => {
-    const row = await dbGet(db, 'SELECT * FROM assets WHERE id=?', [req.params.id]);
+    const row = await dbGet(db, 'SELECT * FROM user_assets WHERE id=? AND user_id=?', [req.params.id, req.user.id]);
     if (!row) throw new ValidationError('File not found.', 404);
     return send(req, res, row);
   });
   return async (req, res) => {
-    const row = await dbGet(db, 'SELECT a.* FROM assets a WHERE a.id=? AND EXISTS(SELECT 1 FROM qr_codes q WHERE q.asset_id=a.id AND q.active=1)', [req.params.id]);
+    const row = await dbGet(db, 'SELECT a.* FROM user_assets a WHERE a.id=? AND EXISTS(SELECT 1 FROM user_qr_codes q WHERE q.asset_id=a.id AND q.active=1)', [req.params.id]);
     if (!row) return res.status(404).set('Cache-Control', 'no-store').type('text/plain').send('This file is unavailable. Its code may be paused, deleted, or replaced.');
     return send(req, res, row);
   };

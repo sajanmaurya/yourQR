@@ -3,7 +3,7 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "description": "A personal, self-hostable QR code workspace",
+  "description": "A multi-user, self-hostable QR code workspace",
   "engines": {
     "node": "24.x"
   },

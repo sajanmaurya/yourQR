@@ -16,15 +16,17 @@ async function menu(page, name, action) {
   await page.locator('details[open]').getByRole('button', { name: action, exact: true }).click();
 }
 
-test('personal workspace: setup, design, exports, redirects, folders, analytics, and mobile', async ({ page }) => {
+test('multi-user workspace: registration, design, exports, redirects, folders, analytics, logout, and mobile', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Make yourself at home.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome back.' })).toBeVisible();
+  await page.getByRole('button', { name: 'New to Qori? Create an account' }).click();
+  await expect(page.getByRole('heading', { name: 'Create your account.' })).toBeVisible();
   await page.getByLabel('Your name').fill('Local Tester');
   await page.getByLabel('Email address').fill('tester@example.com');
   await page.getByLabel('Password', { exact: true }).fill('test-password-for-Qori-2026');
-  await page.getByRole('button', { name: 'Create my workspace' }).click();
+  await page.getByRole('button', { name: 'Create free account' }).click();
   await expect(page.getByRole('heading', { name: 'My QR codes.' })).toBeVisible();
   await expect(page.locator('.host-status')).toHaveText('Local workspace');
   await expect(page.getByText('Your first connection starts here.')).toBeVisible();

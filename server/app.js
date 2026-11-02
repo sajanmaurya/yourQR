@@ -16,8 +16,7 @@ const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const SESSION_DAYS = 7;
 const cookieName = 'qori_session';
 const tokenHash = (value) => createHash('sha256').update(value).digest('hex');
-const isLoopback = (ip) => ['127.0.0.1', '::1', '::ffff:127.0.0.1'].includes(ip);
-const cleanUser = (owner) => owner ? { id: owner.id, name: owner.name, email: owner.email } : null;
+const cleanUser = (user) => user ? { id: Number(user.id), name: user.name, email: user.email } : null;
 
 function constantEquals(a, b) {
   const left = createHash('sha256').update(String(a || '')).digest();
@@ -44,7 +43,6 @@ export function createApp(options = {}) {
     throw new Error('PUBLIC_BASE_URL must be an http(s) origin without a path, credentials, query, or fragment.');
   }
   const environment = options.environment ?? process.env.NODE_ENV ?? 'development';
-  const setupToken = options.setupToken ?? process.env.SETUP_TOKEN ?? '';
   const secureCookie = options.secureCookie ?? (process.env.COOKIE_SECURE !== undefined ? process.env.COOKIE_SECURE === 'true' : publicUrl.protocol === 'https:');
   const proxyHops = Number(options.trustProxy ?? process.env.TRUST_PROXY ?? 0);
   if (!Number.isInteger(proxyHops) || proxyHops < 0 || proxyHops > 5) throw new Error('TRUST_PROXY must be an integer from 0 to 5.');
@@ -53,9 +51,6 @@ export function createApp(options = {}) {
     throw new Error('Vercel requires an HTTPS PUBLIC_BASE_URL and a private Blob store with BLOB_READ_WRITE_TOKEN.');
   }
   const db = options.db || (usePostgres ? openPostgresDatabase() : openDatabase(dbPath));
-  if (environment === 'production' && !setupToken && db.driver !== 'postgres' && !db.prepare('SELECT id FROM owner WHERE id = 1').get()) {
-    throw new Error('Set a strong SETUP_TOKEN before first production startup. Remove it after creating your owner account.');
-  }
   let analyticsSecret = '';
   let startupError;
   const databaseReady = (async () => {
@@ -63,9 +58,6 @@ export function createApp(options = {}) {
     await dbRun(db, 'INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)', ['analytics_secret', randomBytes(32).toString('hex')]);
     const setting = await dbGet(db, 'SELECT value FROM settings WHERE key = ?', ['analytics_secret']);
     analyticsSecret = setting.value;
-    if (environment === 'production' && !setupToken && db.driver === 'postgres' && !(await dbGet(db, 'SELECT id FROM owner WHERE id = 1'))) {
-      throw new Error('Set a strong SETUP_TOKEN before first production startup. Remove it after creating your owner account.');
-    }
   })().catch(error => { startupError = error; });
   const app = express();
   app.use((req, res, next) => { databaseReady.then(() => next(startupError)); });
@@ -90,17 +82,17 @@ export function createApp(options = {}) {
     }
     const cookie = parseCookie(req.get('cookie'))[cookieName];
     if (cookie && /^[a-f0-9]{64}$/.test(cookie)) {
-      const session = await dbGet(db, 'SELECT owner.* FROM sessions JOIN owner ON sessions.owner_id = owner.id WHERE token_hash = ? AND expires_at > ?', [tokenHash(cookie), Date.now()]);
+      const session = await dbGet(db, 'SELECT users.* FROM user_sessions JOIN users ON user_sessions.user_id = users.id WHERE token_hash = ? AND expires_at > ?', [tokenHash(cookie), Date.now()]);
       if (session) req.user = cleanUser(session);
     }
     next();
   });
 
   const cookieOptions = { httpOnly: true, secure: secureCookie, sameSite: 'strict', path: '/', maxAge: SESSION_DAYS * 86400000 };
-  const startSession = async (res, owner) => {
-    await dbRun(db, 'DELETE FROM sessions WHERE expires_at <= ?', [Date.now()]);
+  const startSession = async (res, user) => {
+    await dbRun(db, 'DELETE FROM user_sessions WHERE expires_at <= ?', [Date.now()]);
     const token = randomBytes(32).toString('hex');
-    await dbRun(db, 'INSERT INTO sessions (token_hash, owner_id, expires_at) VALUES (?, ?, ?)', [tokenHash(token), owner.id, Date.now() + SESSION_DAYS * 86400000]);
+    await dbRun(db, 'INSERT INTO user_sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)', [tokenHash(token), user.id, Date.now() + SESSION_DAYS * 86400000]);
     res.cookie(cookieName, token, cookieOptions);
   };
   const requireAuth = (req, res, next) => req.user ? next() : res.status(401).json({ error: 'Please sign in to continue.' });
@@ -124,18 +116,14 @@ export function createApp(options = {}) {
     }
     next();
   };
-  const config = () => ({ publicBaseUrl, environment, version: '1.0.0', database: db.driver === 'postgres' ? 'PostgreSQL' : 'SQLite', blobUploads: db.driver === 'postgres', setupTokenRequired: Boolean(setupToken), localOnly: ['localhost', '127.0.0.1', '[::1]'].includes(publicUrl.hostname), lanAddressStale: isLanAddressStale(publicBaseUrl, Object.values(networkInterfaces()).flat().filter(Boolean).map(item => item.address)) });
+  const config = () => ({ publicBaseUrl, environment, version: '1.0.0', database: db.driver === 'postgres' ? 'PostgreSQL' : 'SQLite', blobUploads: db.driver === 'postgres', multiUser: true, registrationOpen: true, localOnly: ['localhost', '127.0.0.1', '[::1]'].includes(publicUrl.hostname), lanAddressStale: isLanAddressStale(publicBaseUrl, Object.values(networkInterfaces()).flat().filter(Boolean).map(item => item.address)) });
 
   app.get('/api/health', (req, res) => res.json({ status: 'ok', version: '1.0.0' }));
   app.get('/api/auth/session', async (req, res) => {
-    const owner = await dbGet(db, 'SELECT id FROM owner WHERE id = 1');
-    res.json({ authenticated: Boolean(req.user), setupRequired: !owner, user: req.user || null, config: config() });
+    const anyUser = await dbGet(db, 'SELECT id FROM users LIMIT 1');
+    res.json({ authenticated: Boolean(req.user), setupRequired: !anyUser, user: req.user || null, config: config() });
   });
-  app.post('/api/auth/setup', limitAuth, async (req, res) => {
-    if (await dbGet(db, 'SELECT id FROM owner WHERE id = 1')) throw new ValidationError('An owner account already exists. Please sign in.', 409);
-    if (setupToken ? !constantEquals(req.body?.setupToken, setupToken) : !isLoopback(req.ip)) {
-      throw new ValidationError(setupToken ? 'The setup token is incorrect.' : 'Create the first owner on this computer, or configure SETUP_TOKEN for remote setup.', 403);
-    }
+  app.post(['/api/auth/register', '/api/auth/setup'], limitAuth, async (req, res) => {
     const name = textField(req.body?.name, 'Name', 80);
     const email = textField(req.body?.email, 'Email', 254).toLowerCase();
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) throw new ValidationError('Enter a valid email address.');
@@ -143,20 +131,20 @@ export function createApp(options = {}) {
     if (typeof password !== 'string' || password.length < 12 || password.length > 256) throw new ValidationError('Choose a password with 12–256 characters.');
     const passwordHash = await hashPassword(password);
     try {
-      await dbRun(db, 'INSERT INTO owner (id, name, email, password_hash, created_at) VALUES (1, ?, ?, ?, ?)', [name, email, passwordHash, new Date().toISOString()]);
+      const result = await dbGet(db, 'INSERT INTO users (name, email, password_hash, created_at) VALUES (?, ?, ?, ?) RETURNING id,name,email', [name, email, passwordHash, new Date().toISOString()]);
+      const user = cleanUser(result);
+      await startSession(res, user);
+      return res.status(201).json({ user });
     } catch (error) {
-      if (error.code === '23505' || String(error.message).includes('UNIQUE') || String(error.message).includes('PRIMARY KEY')) throw new ValidationError('An owner account already exists. Please sign in.', 409);
+      if (error.code === '23505' || String(error.message).includes('UNIQUE')) throw new ValidationError('An account with this email already exists. Sign in instead.', 409);
       throw error;
     }
-    const user = { id: 1, name, email };
-    await startSession(res, user);
-    res.status(201).json({ user });
   });
   app.post('/api/auth/login', limitAuth, async (req, res) => {
     const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : '';
     const password = typeof req.body?.password === 'string' ? req.body.password : '';
     if (!email || email.length > 254 || password.length > 256) throw new ValidationError('Email or password is incorrect.', 401);
-    const owner = await dbGet(db, 'SELECT * FROM owner WHERE id = 1');
+    const owner = await dbGet(db, 'SELECT * FROM users WHERE lower(email) = ?', [email]);
     const stored = owner?.password_hash || 'scrypt:00000000000000000000000000000000:' + '00'.repeat(64);
     const valid = await verifyPassword(password, stored);
     if (!owner || !constantEquals(email, owner.email) || !valid) throw new ValidationError('Email or password is incorrect.', 401);
@@ -168,34 +156,34 @@ export function createApp(options = {}) {
   });
   app.post('/api/auth/logout', async (req, res) => {
     const token = parseCookie(req.get('cookie'))[cookieName];
-    if (token) await dbRun(db, 'DELETE FROM sessions WHERE token_hash = ?', [tokenHash(token)]);
+    if (token) await dbRun(db, 'DELETE FROM user_sessions WHERE token_hash = ?', [tokenHash(token)]);
     res.clearCookie(cookieName, { httpOnly: true, secure: secureCookie, sameSite: 'strict', path: '/' });
     res.json({ ok: true });
   });
 
   app.use('/api', requireAuth);
   const servePublicAsset = registerAssets(app, db, options.blobStore);
-  const getRow = async (id) => {
-    const row = await dbGet(db, 'SELECT q.*, (SELECT COUNT(*) FROM scans WHERE qr_id=q.id) AS scan_count FROM qr_codes q WHERE q.id = ?', [id]);
+  const getRow = async (id, userId) => {
+    const row = await dbGet(db, 'SELECT q.*, (SELECT COUNT(*) FROM user_scans WHERE qr_id=q.id) AS scan_count FROM user_qr_codes q WHERE q.id = ? AND q.user_id = ?', [id, userId]);
     if (!row) throw new ValidationError('QR code not found.', 404);
     return row;
   };
-  const mapQR = async (row) => ({
+  const mapQR = async (row, userId) => ({
     id: row.id, name: row.name, type: row.type, contentType: row.category || row.content_type,
     payload: JSON.parse(row.payload_json || '{}'), assetId: row.asset_id || null,
-    asset: row.asset_id ? mapAsset(await dbGet(db, 'SELECT id,kind,name,mime,size,created_at FROM assets WHERE id=?', [row.asset_id])) : null,
+    asset: row.asset_id ? mapAsset(await dbGet(db, 'SELECT id,kind,name,mime,size,created_at FROM user_assets WHERE id=? AND user_id=?', [row.asset_id, userId])) : null,
     destination: row.destination, slug: row.slug, fgColor: row.fg_color, bgColor: row.bg_color,
     logoDataUrl: row.logo_data_url, folderId: row.folder_id, active: Boolean(row.active),
     createdAt: row.created_at, updatedAt: row.updated_at, scanCount: Number(row.scan_count || 0),
     encodedValue: row.encoded_value,
     shortUrl: row.type === 'dynamic' ? row.encoded_value : null,
   });
-  const validFolderId = async (value) => {
+  const validFolderId = async (value, userId) => {
     if (value === null || value === undefined || value === '') return null;
-    if (typeof value !== 'string' || !await dbGet(db, 'SELECT id FROM folders WHERE id = ?', [value])) throw new ValidationError('Choose an existing folder.');
+    if (typeof value !== 'string' || !await dbGet(db, 'SELECT id FROM user_folders WHERE id = ? AND user_id = ?', [value, userId])) throw new ValidationError('Choose an existing folder.');
     return value;
   };
-  const prepareQR = async (body, current = null, preview = false) => {
+  const prepareQR = async (body, current = null, preview = false, userId) => {
     const input = body || {};
     const contentType = input.contentType ?? current?.contentType ?? 'url';
     const meta = getContentType(contentType);
@@ -205,12 +193,12 @@ export function createApp(options = {}) {
     if (meta.mode && type !== meta.mode) throw new ValidationError(`${meta.name} codes use ${meta.mode} mode.`);
     if (current && (type !== current.type || contentType !== current.contentType)) throw new ValidationError('A saved code’s type cannot change. Create a new code instead.');
     const name = preview ? String(input.name || 'Preview') : textField(input.name ?? current?.name, 'Name');
-    const resolved = await resolveContent(contentType, input, { publicBaseUrl, current, db });
+    const resolved = await resolveContent(contentType, input, { publicBaseUrl, current, db, userId });
     const { destination, storageType, payload, assetId } = resolved;
     if (storageType === 'url') {
       const destinationUrl = new URL(destination);
       if (/^\/r(?:\/|$)/i.test(destinationUrl.pathname)) {
-        const savedOrigins = await dbAll(db, "SELECT DISTINCT encoded_value FROM qr_codes WHERE type='dynamic'");
+        const savedOrigins = await dbAll(db, "SELECT DISTINCT encoded_value FROM user_qr_codes WHERE type='dynamic'");
         if (savedOrigins.some((row) => new URL(row.encoded_value).origin === destinationUrl.origin)) {
           throw new ValidationError('A QR destination cannot point to this app’s existing redirect origins.');
         }
@@ -220,7 +208,7 @@ export function createApp(options = {}) {
       for (const target of [payload.fallbackUrl, payload.iosUrl, payload.androidUrl].filter(Boolean)) {
         const value = new URL(target);
         if (/^\/(?:r|files)(?:\/|$)/i.test(value.pathname)) {
-          const ownOrigins = [publicUrl.origin, ...(await dbAll(db, "SELECT encoded_value FROM qr_codes WHERE type='dynamic'")).map(row => new URL(row.encoded_value).origin)];
+          const ownOrigins = [publicUrl.origin, ...(await dbAll(db, "SELECT encoded_value FROM user_qr_codes WHERE type='dynamic'")).map(row => new URL(row.encoded_value).origin)];
           if (ownOrigins.includes(value.origin)) throw new ValidationError('Device routes cannot point to this app’s redirect or file endpoints.');
         }
       }
@@ -231,13 +219,13 @@ export function createApp(options = {}) {
       slug = input.slug ?? current?.slug ?? (preview ? 'preview' : randomBytes(5).toString('hex'));
       slug = validSlug(slug, { preview });
       if (current && slug !== current.slug) throw new ValidationError('The printed redirect slug is permanent. Edit its destination instead.');
-      if (!preview && await dbGet(db, 'SELECT id FROM qr_codes WHERE slug = ? AND id != ?', [slug, current?.id || ''])) throw new ValidationError('This short-link slug is already in use.', 409);
+      if (!preview && await dbGet(db, 'SELECT id FROM user_qr_codes WHERE slug = ? AND id != ?', [slug, current?.id || ''])) throw new ValidationError('This short-link slug is already in use.', 409);
     }
     const fgColor = validColor(input.fgColor ?? current?.fgColor, '#163A35');
     const bgColor = validColor(input.bgColor ?? current?.bgColor, '#FFFFFF');
     validateColors(fgColor, bgColor);
     const logoDataUrl = Object.hasOwn(input, 'logoDataUrl') ? await validLogo(input.logoDataUrl) : current?.logoDataUrl ?? null;
-    const folderId = await validFolderId(input.folderId === undefined ? current?.folderId : input.folderId);
+    const folderId = await validFolderId(input.folderId === undefined ? current?.folderId : input.folderId, userId);
     const active = input.active ?? current?.active ?? true;
     if (typeof active !== 'boolean') throw new ValidationError('Active must be true or false.');
     if (type === 'static' && !active) throw new ValidationError('A static QR code points directly to its content and cannot be paused.');
@@ -246,69 +234,69 @@ export function createApp(options = {}) {
     return qr;
   };
   app.get('/api/qrs', async (req, res) => {
-    const qrs = await Promise.all((await dbAll(db, 'SELECT q.*, (SELECT COUNT(*) FROM scans WHERE qr_id=q.id) AS scan_count FROM qr_codes q ORDER BY created_at DESC')).map(mapQR));
+    const qrs = await Promise.all((await dbAll(db, 'SELECT q.*, (SELECT COUNT(*) FROM user_scans WHERE qr_id=q.id) AS scan_count FROM user_qr_codes q WHERE q.user_id=? ORDER BY created_at DESC', [req.user.id])).map(row => mapQR(row, req.user.id)));
     res.json({ qrs });
   });
   app.post('/api/qrs', async (req, res) => {
-    const qr = await prepareQR(req.body);
+    const qr = await prepareQR(req.body, null, false, req.user.id);
     const id = randomUUID(), now = new Date().toISOString();
     try {
-      await dbRun(db, 'INSERT INTO qr_codes (id,name,type,content_type,category,payload_json,asset_id,destination,encoded_value,slug,fg_color,bg_color,logo_data_url,folder_id,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [id, qr.name, qr.type, qr.storageType, qr.contentType, JSON.stringify(qr.payload), qr.assetId, qr.destination, qr.encodedValue, qr.slug, qr.fgColor, qr.bgColor, qr.logoDataUrl, qr.folderId, Number(qr.active), now, now]);
+      await dbRun(db, 'INSERT INTO user_qr_codes (id,user_id,name,type,content_type,category,payload_json,asset_id,destination,encoded_value,slug,fg_color,bg_color,logo_data_url,folder_id,active,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)', [id, req.user.id, qr.name, qr.type, qr.storageType, qr.contentType, JSON.stringify(qr.payload), qr.assetId, qr.destination, qr.encodedValue, qr.slug, qr.fgColor, qr.bgColor, qr.logoDataUrl, qr.folderId, Number(qr.active), now, now]);
     } catch (error) {
       if (error.code === '23505' || String(error.message).includes('UNIQUE')) throw new ValidationError('This short-link slug is already in use.', 409);
       throw error;
     }
-    res.status(201).json({ qr: await mapQR(await getRow(id)) });
+    res.status(201).json({ qr: await mapQR(await getRow(id, req.user.id), req.user.id) });
   });
   app.patch('/api/qrs/:id', async (req, res) => {
-    const current = await mapQR(await getRow(req.params.id));
-    const qr = await prepareQR(req.body, current);
-    await dbRun(db, 'UPDATE qr_codes SET name=?,destination=?,payload_json=?,asset_id=?,fg_color=?,bg_color=?,logo_data_url=?,folder_id=?,active=?,updated_at=? WHERE id=?', [qr.name, qr.destination, JSON.stringify(qr.payload), qr.assetId, qr.fgColor, qr.bgColor, qr.logoDataUrl, qr.folderId, Number(qr.active), new Date().toISOString(), current.id]);
-    res.json({ qr: await mapQR(await getRow(current.id)) });
+    const current = await mapQR(await getRow(req.params.id, req.user.id), req.user.id);
+    const qr = await prepareQR(req.body, current, false, req.user.id);
+    await dbRun(db, 'UPDATE user_qr_codes SET name=?,destination=?,payload_json=?,asset_id=?,fg_color=?,bg_color=?,logo_data_url=?,folder_id=?,active=?,updated_at=? WHERE id=? AND user_id=?', [qr.name, qr.destination, JSON.stringify(qr.payload), qr.assetId, qr.fgColor, qr.bgColor, qr.logoDataUrl, qr.folderId, Number(qr.active), new Date().toISOString(), current.id, req.user.id]);
+    res.json({ qr: await mapQR(await getRow(current.id, req.user.id), req.user.id) });
   });
   app.delete('/api/qrs/:id', async (req, res) => {
-    await getRow(req.params.id);
-    await dbRun(db, 'DELETE FROM qr_codes WHERE id = ?', [req.params.id]);
+    await getRow(req.params.id, req.user.id);
+    await dbRun(db, 'DELETE FROM user_qr_codes WHERE id = ? AND user_id=?', [req.params.id, req.user.id]);
     res.json({ ok: true });
   });
   app.post('/api/preview', async (req, res) => {
     if (req.body?.id !== undefined && typeof req.body.id !== 'string') throw new ValidationError('Choose a valid saved QR code for the preview.');
-    const current = req.body?.id ? await mapQR(await getRow(req.body.id)) : null;
-    const qr = await prepareQR(req.body, current, true);
+    const current = req.body?.id ? await mapQR(await getRow(req.body.id, req.user.id), req.user.id) : null;
+    const qr = await prepareQR(req.body, current, true, req.user.id);
     res.json({ svg: await renderQR(qr), encodedValue: qr.encodedValue });
   });
   app.get('/api/qrs/:id/download', async (req, res) => {
     const format = req.query.format || 'svg';
     if (!['svg', 'png'].includes(format)) throw new ValidationError('Download format must be svg or png.');
-    const qr = await mapQR(await getRow(req.params.id));
+    const qr = await mapQR(await getRow(req.params.id, req.user.id), req.user.id);
     const filename = qr.name.replace(/[^a-zA-Z0-9_-]+/g, '-').replace(/^-|-$/g, '').slice(0, 80) || 'qori-code';
     res.type(format === 'svg' ? 'image/svg+xml' : 'image/png');
     res.attachment(`${filename}.${format}`);
     res.send(await renderQR(qr, format));
   });
 
-  const folderRows = () => dbAll(db, 'SELECT f.*, (SELECT COUNT(*) FROM qr_codes WHERE folder_id = f.id) AS qr_count FROM folders f ORDER BY lower(name)');
+  const folderRows = (userId) => dbAll(db, 'SELECT f.*, (SELECT COUNT(*) FROM user_qr_codes WHERE folder_id = f.id AND user_id=?) AS qr_count FROM user_folders f WHERE f.user_id=? ORDER BY lower(name)', [userId, userId]);
   const mapFolder = (row) => ({ id: row.id, name: row.name, color: row.color, qrCount: Number(row.qr_count || 0) });
-  app.get('/api/folders', async (req, res) => res.json({ folders: (await folderRows()).map(mapFolder) }));
+  app.get('/api/folders', async (req, res) => res.json({ folders: (await folderRows(req.user.id)).map(mapFolder) }));
   app.post('/api/folders', async (req, res) => {
     const name = textField(req.body?.name, 'Folder name', 60), color = validColor(req.body?.color, '#638A78');
     const id = randomUUID();
-    try { await dbRun(db, 'INSERT INTO folders (id,name,color,created_at) VALUES (?,?,?,?)', [id, name, color, new Date().toISOString()]); }
+    try { await dbRun(db, 'INSERT INTO user_folders (id,user_id,name,color,created_at) VALUES (?,?,?,?,?)', [id, req.user.id, name, color, new Date().toISOString()]); }
     catch (error) { if (error.code === '23505' || String(error.message).includes('UNIQUE')) throw new ValidationError('A folder with this name already exists.', 409); throw error; }
-    res.status(201).json({ folder: mapFolder((await folderRows()).find((row) => row.id === id)) });
+    res.status(201).json({ folder: mapFolder((await folderRows(req.user.id)).find((row) => row.id === id)) });
   });
   app.patch('/api/folders/:id', async (req, res) => {
-    const current = await dbGet(db, 'SELECT * FROM folders WHERE id = ?', [req.params.id]);
+    const current = await dbGet(db, 'SELECT * FROM user_folders WHERE id = ? AND user_id=?', [req.params.id, req.user.id]);
     if (!current) throw new ValidationError('Folder not found.', 404);
     const name = textField(req.body?.name ?? current.name, 'Folder name', 60), color = validColor(req.body?.color, current.color);
-    try { await dbRun(db, 'UPDATE folders SET name=?,color=? WHERE id=?', [name, color, current.id]); }
+    try { await dbRun(db, 'UPDATE user_folders SET name=?,color=? WHERE id=? AND user_id=?', [name, color, current.id, req.user.id]); }
     catch (error) { if (error.code === '23505' || String(error.message).includes('UNIQUE')) throw new ValidationError('A folder with this name already exists.', 409); throw error; }
-    res.json({ folder: mapFolder((await folderRows()).find((row) => row.id === current.id)) });
+    res.json({ folder: mapFolder((await folderRows(req.user.id)).find((row) => row.id === current.id)) });
   });
   app.delete('/api/folders/:id', async (req, res) => {
-    const current = await dbGet(db, 'SELECT id FROM folders WHERE id = ?', [req.params.id]);
+    const current = await dbGet(db, 'SELECT id FROM user_folders WHERE id = ? AND user_id=?', [req.params.id, req.user.id]);
     if (!current) throw new ValidationError('Folder not found.', 404);
-    await dbRun(db, 'DELETE FROM folders WHERE id = ?', [current.id]);
+    await dbRun(db, 'DELETE FROM user_folders WHERE id = ? AND user_id=?', [current.id, req.user.id]);
     res.json({ ok: true });
   });
 
@@ -317,37 +305,37 @@ export function createApp(options = {}) {
     if (![7, 30, 90].includes(days)) throw new ValidationError('Choose a 7, 30, or 90 day analytics window.');
     const qrId = req.query.qrId;
     if (qrId && typeof qrId !== 'string') throw new ValidationError('Choose a valid QR code.');
-    if (qrId) await getRow(qrId);
+    if (qrId) await getRow(qrId, req.user.id);
     const today = new Date();
     const start = new Date(Date.UTC(today.getUTCFullYear(), today.getUTCMonth(), today.getUTCDate() - days + 1));
     const startIso = start.toISOString();
     const scope = qrId ? ' AND s.qr_id = ?' : '';
-    const args = qrId ? [startIso, qrId] : [startIso];
-    const totals = await dbGet(db, `SELECT COUNT(*) AS total, COUNT(DISTINCT visitor_hash) AS unique_visitors FROM scans s WHERE s.scanned_at >= ?${scope}`, args);
-    const daily = await dbAll(db, `SELECT substr(s.scanned_at,1,10) AS date, COUNT(*) AS scans FROM scans s WHERE s.scanned_at >= ?${scope} GROUP BY date`, args);
+    const args = qrId ? [startIso, req.user.id, qrId] : [startIso, req.user.id];
+    const totals = await dbGet(db, `SELECT COUNT(*) AS total, COUNT(DISTINCT visitor_hash) AS unique_visitors FROM user_scans s JOIN user_qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.user_id=?${scope}`, args);
+    const daily = await dbAll(db, `SELECT substr(s.scanned_at,1,10) AS date, COUNT(*) AS scans FROM user_scans s JOIN user_qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.user_id=?${scope} GROUP BY date`, args);
     const dailyMap = new Map(daily.map((row) => [row.date, Number(row.scans)]));
     const series = Array.from({ length: days }, (_, i) => {
       const date = new Date(start.getTime() + i * 86400000).toISOString().slice(0, 10);
       return { date, scans: dailyMap.get(date) || 0 };
     });
-    const grouped = async (column) => (await dbAll(db, `SELECT ${column} AS name, COUNT(*) AS count FROM scans s WHERE s.scanned_at >= ?${scope} GROUP BY ${column} ORDER BY count DESC, name ASC`, args)).map((row) => ({ name: row.name, count: Number(row.count) }));
-    const recent = await dbAll(db, `SELECT s.id,q.name AS "qrName",s.scanned_at AS "scannedAt",s.device,s.referrer FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ?${scope} ORDER BY s.scanned_at DESC LIMIT 20`, args);
-    const topCodes = (await dbAll(db, `SELECT q.id,q.name,COUNT(s.id) AS scans FROM scans s JOIN qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ?${scope} GROUP BY q.id ORDER BY scans DESC, q.name LIMIT 5`, args)).map((row) => ({ ...row, scans: Number(row.scans) }));
-    const counts = await dbAll(db, `SELECT type,COUNT(*) AS count FROM qr_codes${qrId ? ' WHERE id=?' : ''} GROUP BY type`, qrId ? [qrId] : []);
+    const grouped = async (column) => (await dbAll(db, `SELECT ${column} AS name, COUNT(*) AS count FROM user_scans s JOIN user_qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.user_id=?${scope} GROUP BY ${column} ORDER BY count DESC, name ASC`, args)).map((row) => ({ name: row.name, count: Number(row.count) }));
+    const recent = await dbAll(db, `SELECT s.id,q.name AS "qrName",s.scanned_at AS "scannedAt",s.device,s.referrer FROM user_scans s JOIN user_qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.user_id=?${scope} ORDER BY s.scanned_at DESC LIMIT 20`, args);
+    const topCodes = (await dbAll(db, `SELECT q.id,q.name,COUNT(s.id) AS scans FROM user_scans s JOIN user_qr_codes q ON q.id=s.qr_id WHERE s.scanned_at >= ? AND q.user_id=?${scope} GROUP BY q.id ORDER BY scans DESC, q.name LIMIT 5`, args)).map((row) => ({ ...row, scans: Number(row.scans) }));
+    const counts = await dbAll(db, `SELECT type,COUNT(*) AS count FROM user_qr_codes WHERE user_id=?${qrId ? ' AND id=?' : ''} GROUP BY type`, qrId ? [req.user.id, qrId] : [req.user.id]);
     res.json({ totalScans: Number(totals.total), uniqueVisitors: Number(totals.unique_visitors), dynamicCount: Number(counts.find((row) => row.type === 'dynamic')?.count || 0), staticCount: Number(counts.find((row) => row.type === 'static')?.count || 0), series, devices: await grouped('s.device'), referrers: await grouped('s.referrer'), recent, topCodes, timezone: 'UTC', visitorMetric: 'Approximate daily unique visitors; repeat visitors on different days count again.' });
   });
   app.get('/api/settings', (req, res) => res.json({ ...config(), sessionDays: SESSION_DAYS, analyticsTimezone: 'UTC' }));
   app.get('/api/export', async (req, res) => {
-    const qrs = await Promise.all((await dbAll(db, 'SELECT q.*, (SELECT COUNT(*) FROM scans WHERE qr_id=q.id) AS scan_count FROM qr_codes q ORDER BY created_at')).map(mapQR));
+    const qrs = await Promise.all((await dbAll(db, 'SELECT q.*, (SELECT COUNT(*) FROM user_scans WHERE qr_id=q.id) AS scan_count FROM user_qr_codes q WHERE q.user_id=? ORDER BY created_at', [req.user.id])).map(row => mapQR(row, req.user.id)));
     res.attachment(`qori-library-${new Date().toISOString().slice(0, 10)}.json`);
-    res.json({ version: '1.0.0', exportedAt: new Date().toISOString(), publicBaseUrl, folders: (await folderRows()).map(mapFolder), qrs, note: db.driver === 'postgres' ? 'Library export only. Use your database provider backup for scan history and account data.' : 'Library export only. Copy the stopped SQLite database for a full backup including scan history and your account.' });
+    res.json({ version: '1.0.0', exportedAt: new Date().toISOString(), publicBaseUrl, folders: (await folderRows(req.user.id)).map(mapFolder), qrs, note: 'This export contains only your workspace library.' });
   });
   app.use('/api', (req, res) => res.status(404).json({ error: 'API endpoint not found.' }));
 
   app.get('/r/:slug', async (req, res) => {
     res.set('Cache-Control', 'no-store, max-age=0');
     res.set('X-Robots-Tag', 'noindex, nofollow');
-    const row = await dbGet(db, "SELECT id,destination,active,category,payload_json FROM qr_codes WHERE slug = ? AND type = 'dynamic'", [req.params.slug]);
+    const row = await dbGet(db, "SELECT id,destination,active,category,payload_json FROM user_qr_codes WHERE slug = ? AND type = 'dynamic'", [req.params.slug]);
     if (!row) return res.status(404).type('text/plain').send('This QR code was not found.');
     if (!row.active) return res.status(410).type('text/plain').send('This QR code is paused. Please contact its owner.');
     if (req.method === 'GET') {
@@ -356,7 +344,7 @@ export function createApp(options = {}) {
       const device = /bot|crawl|spider|slurp|preview/i.test(ua) ? 'Bot / preview' : /ipad|tablet/i.test(ua) ? 'Tablet' : /mobile|iphone|android/i.test(ua) ? 'Mobile' : ua ? 'Desktop' : 'Unknown';
       let referrer = 'Direct';
       try { const url = new URL(req.get('referer')); if (['http:', 'https:'].includes(url.protocol)) referrer = url.hostname.slice(0, 253); } catch { /* No usable referrer. */ }
-      await dbRun(db, 'INSERT INTO scans (id,qr_id,scanned_at,visitor_hash,device,referrer) VALUES (?,?,?,?,?,?)', [randomUUID(), row.id, now, visitorHash, device, referrer]);
+      await dbRun(db, 'INSERT INTO user_scans (id,qr_id,scanned_at,visitor_hash,device,referrer) VALUES (?,?,?,?,?,?)', [randomUUID(), row.id, now, visitorHash, device, referrer]);
     }
     let destination = row.destination;
     if (['app', 'smart'].includes(row.category)) {

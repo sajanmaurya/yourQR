@@ -31,7 +31,7 @@ const escapeVcard = value => value.replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n
 export async function resolveContent(category, input, context) {
   const meta = contentType(category);
   if (!meta) throw new ValidationError('Choose a supported QR content type.');
-  const { publicBaseUrl, current, db } = context;
+  const { publicBaseUrl, current, db, userId } = context;
   const payload = input.payload ?? current?.payload ?? {};
   if (!payload || typeof payload !== 'object' || Array.isArray(payload) || JSON.stringify(payload).length > 12000) throw new ValidationError('Content details are invalid or too long.');
   const url = value => validDestination(value, 'url', publicBaseUrl);
@@ -39,7 +39,7 @@ export async function resolveContent(category, input, context) {
   if (meta.file) {
     const assetId = input.assetId ?? current?.assetId;
     if (typeof assetId !== 'string') throw new ValidationError(`Upload a ${meta.name} file first.`);
-    const asset = await dbGet(db, 'SELECT id,kind FROM assets WHERE id=?', [assetId]);
+    const asset = await dbGet(db, 'SELECT id,kind FROM user_assets WHERE id=? AND user_id=?', [assetId, userId]);
     if (!asset || asset.kind !== category) throw new ValidationError(`Choose an uploaded ${meta.name} file.`);
     const origin = current ? new URL(current.encodedValue).origin : publicBaseUrl;
     return { destination: `${origin}/files/${asset.id}`, storageType: 'url', payload: {}, assetId };
