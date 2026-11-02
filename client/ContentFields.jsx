@@ -15,6 +15,9 @@ export function ContentFields({ draft, qr, update, onUploading, setError, blobUp
   const meta = contentType(draft.contentType);
   const inputRef = useRef(null);
   const [uploadBusy, setUploadBusy] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState('');
+  const [uploadSize, setUploadSize] = useState(0);
+  const fileSizeSafe = () => uploadSize;
   const payload = draft.payload || {};
   const set = (key, value) => update('payload', { ...payload, [key]: value });
   const fixed = Boolean(qr?.type === 'static');
@@ -23,7 +26,7 @@ export function ContentFields({ draft, qr, update, onUploading, setError, blobUp
     event.target.value = '';
     if (!file) return;
     if (file.size > meta.maxMB * 1024 * 1024) { setError(`${meta.name} files must be no larger than ${meta.maxMB} MB.`); return; }
-    setUploadBusy(true); onUploading(true); setError('');
+    setUploadBusy(true); setUploadSize(file.size); setUploadStatus('Preparing upload…'); onUploading(true); setError('');
     try {
       let asset;
       if (blobUploads) {
@@ -31,7 +34,13 @@ export function ContentFields({ draft, qr, update, onUploading, setError, blobUp
         const intent = await intentResponse.json();
         if (!intentResponse.ok) throw new Error(intent.error || 'Upload could not start.');
         const { upload: uploadBlob } = await import('@vercel/blob/client');
-        const blob = await uploadBlob(intent.pathname, file, { access: 'private', handleUploadUrl: '/api/assets/upload-token', contentType: file.type || 'application/octet-stream', multipart: file.size > 5 * 1024 * 1024 });
+        const controller = new AbortController();
+        const timeout = setTimeout(() => controller.abort(), 180000);
+        let blob;
+        try {
+          blob = await uploadBlob(intent.pathname, file, { access: 'private', handleUploadUrl: '/api/assets/upload-token', contentType: file.type || 'application/octet-stream', multipart: false, abortSignal: controller.signal, onUploadProgress: progress => setUploadStatus(`Uploading… ${Math.round(progress.percentage)}%`) });
+        } finally { clearTimeout(timeout); }
+        setUploadStatus('Checking your file…');
         const response = await fetch('/api/assets/finalize', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pathname: blob.pathname }) });
         const result = await response.json();
         if (!response.ok) throw new Error(result.error || 'Upload could not be verified.');
@@ -45,10 +54,10 @@ export function ContentFields({ draft, qr, update, onUploading, setError, blobUp
       update('asset', asset);
       update('assetId', asset.id);
       if (!draft.name.trim()) update('name', file.name.replace(/\.[^.]+$/, '').slice(0, 100));
-    } catch (error) { setError(error.message); }
-    finally { setUploadBusy(false); onUploading(false); }
+    } catch (error) { setError(error.name === 'AbortError' ? 'Upload timed out after 3 minutes. Check your connection and try again.' : error.message); }
+    finally { setUploadBusy(false); setUploadStatus(''); setUploadSize(0); onUploading(false); }
   }
-  if (meta?.file) return <div className="file-content-fields"><div className="field"><label htmlFor="qr-file">{qr ? `Replace ${meta.name} file` : `${meta.name} file`}<span className="required">*</span></label><input ref={inputRef} id="qr-file" type="file" className="visually-hidden" accept={meta.accept} aria-label={`Upload ${meta.name} file`} onChange={upload} disabled={uploadBusy}/><button type="button" className={`file-upload-zone ${draft.asset ? 'has-file' : ''}`} onClick={() => inputRef.current?.click()} disabled={uploadBusy}><span className="file-upload-icon">{uploadBusy ? <Spinner text=""/> : <Icons.FileUp size={28}/>}</span><strong>{uploadBusy ? 'Uploading your file…' : draft.asset?.name || `Choose a ${meta.name} file`}</strong><span>{draft.asset ? `${formatBytes(draft.asset.size)} · Click to replace` : `Stored on your server · Up to ${meta.maxMB} MB`}</span></button>{draft.asset && <a className="text-button file-preview-link" href={`/api/assets/${draft.asset.id}/content`} target="_blank" rel="noopener noreferrer"><Icons.ExternalLink size={14}/>Open uploaded file</a>}<small>{meta.id === 'pdf' ? 'People scan your QR to open this PDF. Upload a replacement here and save; your printed QR stays the same.' : meta.id === 'pptx' ? 'People scan to download the presentation. PPTX opens in a compatible presentation app.' : meta.id === 'audio' ? 'MP3, WAV, or Ogg. Scanning opens the recording in the browser or its media player.' : 'PNG, JPEG, or WebP. Scanning opens the uploaded image.'}</small></div><div className="file-sharing-note"><Icons.Globe2 size={18}/><p>Anyone with an active code’s link can access the file. Pause the code to stop serving it. A reachable server is required.</p></div></div>;
+  if (meta?.file) return <div className="file-content-fields"><div className="field"><label htmlFor="qr-file">{qr ? `Replace ${meta.name} file` : `${meta.name} file`}<span className="required">*</span></label><input ref={inputRef} id="qr-file" type="file" className="visually-hidden" accept={meta.accept} aria-label={`Upload ${meta.name} file`} onChange={upload} disabled={uploadBusy}/><button type="button" className={`file-upload-zone ${draft.asset ? 'has-file' : ''}`} onClick={() => inputRef.current?.click()} disabled={uploadBusy}><span className="file-upload-icon">{uploadBusy ? <Spinner text=""/> : <Icons.FileUp size={28}/>}</span><strong>{uploadBusy ? uploadStatus : draft.asset?.name || `Choose a ${meta.name} file`}</strong><span>{uploadBusy ? formatBytes(fileSizeSafe(inputRef.current)) : draft.asset ? `${formatBytes(draft.asset.size)} · Click to replace` : `Stored on your server · Up to ${meta.maxMB} MB`}</span></button>{draft.asset && <a className="text-button file-preview-link" href={`/api/assets/${draft.asset.id}/content`} target="_blank" rel="noopener noreferrer"><Icons.ExternalLink size={14}/>Open uploaded file</a>}<small>{meta.id === 'pdf' ? 'People scan your QR to open this PDF. Upload a replacement here and save; your printed QR stays the same.' : meta.id === 'pptx' ? 'People scan to download the presentation. PPTX opens in a compatible presentation app.' : meta.id === 'audio' ? 'MP3, WAV, or Ogg. Scanning opens the recording in the browser or its media player.' : 'PNG, JPEG, or WebP. Scanning opens the uploaded image.'}</small></div><div className="file-sharing-note"><Icons.Globe2 size={18}/><p>Anyone with an active code’s link can access the file. Pause the code to stop serving it. A reachable server is required.</p></div></div>;
   if (draft.contentType === 'url' || draft.contentType === 'text') return <div className="field"><label htmlFor="qr-destination">{draft.contentType === 'text' ? 'Your text' : 'Destination URL'}<span className="required">*</span>{draft.type === 'dynamic' && <span className="label-hint">Editable anytime</span>}</label>{draft.contentType === 'text' ? <textarea id="qr-destination" value={draft.destination} onChange={event => update('destination', event.target.value)} placeholder="A message worth sharing…" rows={4} maxLength={1000} disabled={fixed}/> : <div className="input-icon"><Icons.Globe2 size={17}/><input id="qr-destination" type="url" value={draft.destination} onChange={event => update('destination', event.target.value)} placeholder="https://your-website.com" maxLength={2048} disabled={fixed}/></div>}<small>{fixed ? 'Static content is embedded permanently. Create a new code to change it.' : draft.type === 'dynamic' ? 'Change this destination later without reprinting your code.' : 'Embedded directly in the QR. Its content is permanent.'}</small></div>;
   return <div className="structured-fields">{meta?.fields.map(([key, label, type]) => {
     const id = `content-${key}`, optional = label.includes('(optional)') || key === 'hidden' || (key === 'password' && payload.security === 'nopass');
