@@ -371,7 +371,7 @@ export function createApp(options = {}) {
     if (error instanceof ValidationError) return res.status(error.status).json({ error: error.message });
     if (error.type === 'entity.too.large') return res.status(413).json({ error: req.path === '/api/assets' ? 'File uploads must be no larger than 25 MB. PDF/PPTX limits are 20 MB; images are 10 MB.' : 'Request is too large. Use a logo smaller than 200 KB.' });
     if (error.type === 'entity.parse.failed') return res.status(400).json({ error: 'Request body must contain valid JSON.' });
-    console.error('Qori request failed:', error.message);
+    console.error('yourQR request failed:', error.message);
     res.status(500).json({ error: 'Something went wrong. Please try again.' });
   });
   app.locals.db = db;

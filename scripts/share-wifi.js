@@ -53,5 +53,5 @@ try {
   console.log(`Wi-Fi sharing address: ${baseUrl}`);
   console.log(`Updated ${changed} local QR address(es). Download those QR images again before scanning.`);
   console.log('Existing owner, files, folders, slugs, and analytics were preserved. A full database backup was saved in data/backups/.');
-  console.log('Start Qori again and keep the computer awake. Phone and computer must use the same Wi-Fi/hotspot.');
+  console.log('Start yourQR again and keep the computer awake. Phone and computer must use the same Wi-Fi/hotspot.');
 } finally { db.close(); }

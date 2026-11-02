@@ -146,8 +146,8 @@ test('static URL and text remain permanent, folder deletion unfiles codes', asyn
   assert.equal((await f.json(`/api/folders/${folder.id}`, { method: 'PATCH', body: { name: 'Projects' } })).status, 200);
   assert.equal((await f.json(`/api/folders/${folder.id}`, { method: 'DELETE' })).status, 200);
   assert.equal((await f.json('/api/qrs')).body.qrs[0].folderId, null);
-  const text = await createQR(f, { type: 'static', contentType: 'text', destination: 'Hello from Qori! नमस्ते 🌿\nA second line.', name: 'Text' });
-  assert.equal(text.encodedValue, 'Hello from Qori! नमस्ते 🌿\nA second line.');
+  const text = await createQR(f, { type: 'static', contentType: 'text', destination: 'Hello from yourQR! नमस्ते 🌿\nA second line.', name: 'Text' });
+  assert.equal(text.encodedValue, 'Hello from yourQR! नमस्ते 🌿\nA second line.');
   const png = Buffer.from(await (await f.api(`/api/qrs/${text.id}/download?format=png`)).arrayBuffer());
   const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   assert.equal(jsQR(new Uint8ClampedArray(data), info.width, info.height)?.data, text.encodedValue);

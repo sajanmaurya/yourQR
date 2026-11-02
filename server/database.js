@@ -141,7 +141,7 @@ export const postgresSchema = `
 `;
 
 export function openPostgresDatabase(connectionString = process.env.DATABASE_URL) {
-  if (!connectionString) throw new Error('DATABASE_URL is required when running Qori on Vercel.');
+  if (!connectionString) throw new Error('DATABASE_URL is required when running yourQR on Vercel.');
   // HTTP queries do not leave WebSocket connections alive between Function invocations.
   const sql = neon(connectionString, { fullResults: true });
   const pool = { query: (text, params = []) => sql.query(text, params) };

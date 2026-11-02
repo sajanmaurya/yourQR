@@ -3,7 +3,7 @@ import QRCode from 'qrcode';
 import { X, AlertCircle, Check, QrCode, ChevronDown, LoaderCircle, ExternalLink, ArrowUpRight } from 'lucide-react';
 
 export function Brand({ light = false }) {
-  return <span className={`brand ${light ? 'brand-light' : ''}`}><span className="brand-mark" aria-hidden="true"><i /><i /><i /><b /></span><span>qori<span className="brand-dot">.</span></span></span>;
+  return <span className={`brand ${light ? 'brand-light' : ''}`}><span className="brand-mark" aria-hidden="true"><i /><i /><i /><b /></span><span>yourQR<span className="brand-dot">.</span></span></span>;
 }
 
 export function Spinner({ text = 'Loading…' }) { return <span className="spinner-label"><LoaderCircle className="spin" size={18} />{text}</span>; }
