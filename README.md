@@ -23,14 +23,14 @@ The database starts empty. All counters come from saved records and actual redir
 3. Save, then download its QR as PNG or SVG. A scan opens the PDF from your Qori server.
 4. To update the document, open **Edit code**, upload a replacement PDF, and **Save changes**. The QR image and its permanent short link stay the same.
 
-Your uploaded files are stored as binary data inside SQLite, alongside your saved records. No external file host or QR service is involved. A full stopped-database backup includes the files. The JSON workspace export includes file metadata and references, **not file contents**.
+On a local or self-hosted SQLite installation, uploaded files are stored inside the database. On Vercel, PostgreSQL stores file metadata and Vercel Blob stores the private file contents; Qori checks the file when it is finalized and serves it through the authenticated/active-code checks in the app. A JSON workspace export includes file metadata and references, **not file contents**.
 
 Anyone who has an active file code's link can access its document; viewers do not need an owner login. Pausing or deleting the code blocks further serving of its file, unless another active code references that same upload. Replacing a file removes public access to its previous upload unless another active code uses it. Files already downloaded or cached by a recipient cannot be recalled. Newly uploaded files without a saved QR are private to the owner; abandoned uploads are collected after 24 hours during a later upload.
 
 | File type | Accepted formats | Upload limit | Scan result |
 |---|---|---|---|
 | PDF | PDF | 20 MB | Browser PDF viewer, or download depending on the scanning browser |
-| Image | PNG, JPEG, WebP; under 20 megapixels | 10 MB | Opens the image; stored as PNG |
+| Image | PNG, JPEG, WebP; under 20 megapixels | 10 MB | Opens the image; local uploads converted to PNG |
 | Audio | MP3, WAV, Ogg | 25 MB | Browser playback or the device's media player |
 | PPTX | `.pptx` presentation | 20 MB | Downloads for opening in a presentation app |
 
@@ -130,21 +130,40 @@ For codes shared outside your network, use an always-on host and a **stable publ
 
 Set the permanent public address **before printing dynamic codes**. Qori stores the encoded redirect address with each code. Changing `PUBLIC_BASE_URL` later cannot rewrite images that have already been downloaded or printed. Keep the old address serving those redirects if you move hosts.
 
+## Vercel hosted trial
+
+The Vercel configuration supports a **single personal workspace trial**. Vercel serves the React files, runs the Express API as a Function, Neon Postgres keeps the account/codes/folders/analytics, and private Vercel Blob stores uploaded PDFs and other files. The Vercel Function's local filesystem is not used for permanent data. Existing SQLite data and PDF files are not automatically copied to the hosted database; the hosted trial starts empty.
+
+1. Import `sajanmaurya/yourQR` into Vercel and select `vercel-beta` as the Production Branch in Project Settings. Use the repository root, the **Express** framework preset, Node **24.x**, and `npm run build`. Leave Output Directory at the framework default; do not override it to `dist` or choose the Vite preset. The root `index.js` serves the API and the build copies browser files into `public/` for Vercel’s CDN.
+2. Create a Neon Postgres database and a **private** Vercel Blob store, then link the Blob store to the Vercel project.
+3. In Vercel Project Settings → Environment Variables, configure `DATABASE_URL` with the **Neon** connection string, `PUBLIC_BASE_URL` with the final stable HTTPS domain (for a first test, use the stable production Vercel domain), and a long random `SETUP_TOKEN`. Set `TRUST_PROXY=1` and `NODE_ENV=production`. Confirm the linked private store supplies `BLOB_READ_WRITE_TOKEN`. Do not copy your local `.env`: its localhost address and SQLite settings are for local use. Use separate database and Blob stores for previews; never point unreviewed previews at the live workspace.
+4. Deploy, open the production URL, and create the personal owner account using the setup token. Remove `SETUP_TOKEN` from the Vercel environment after setup and redeploy. Keep the owner password private.
+5. Open `/api/health`, then create a test PDF QR code (also try a PDF larger than 4.5 MB), scan it from a phone on mobile data, replace the PDF, and verify the same QR slug opens the replacement. Pause the code and check that both its redirect and file link stop working. Check analytics, PNG/SVG downloads, logout/login, and persistence after redeploying before distributing codes. Public QR redirects must be reachable without Vercel deployment-protection login; Qori’s dashboard still requires the owner login.
+
+Uploads go directly from the signed-in browser to private Blob using a short-lived, size-limited permission for one unique path. The API validates the file before attaching it to the library. Retrying finalization returns the same asset. Downloads are streamed through Qori with active-code checks and byte-range support. Hosted login throttling is stored in Postgres so it survives Function restarts.
+
+Back up both Neon and Blob; the JSON library export is not a full backup. Hosted abandoned/invalid uploads remain private and may consume storage. Periodically compare Blob paths with `assets.blob_path` and `upload_intents.pathname`, removing only unreferenced objects whose upload intent expired more than a day ago. Never delete objects still referenced by assets. The local `reset-password` script is SQLite-only; keep the hosted owner credentials in a password manager. Provider costs, backup retention, cleanup and availability still need monitoring during the trial.
+
+The Vercel adapter uses Postgres and Blob only when running on Vercel; local and Docker installs keep SQLite-backed uploads. Vercel/Neon/Blob usage may incur charges after provider allowances. Check current provider pricing and set spending alerts before inviting anyone. Vercel projects can deploy previews for branches, but the `PUBLIC_BASE_URL` used to encode new QR codes must remain stable; do not create printed codes from a temporary preview URL.
+
+This is not yet a public SaaS launch: there is one owner account, no public registration, email verification, password reset email, subscriptions, or multi-customer tenant isolation. Keep the Vercel project private to your own use until those product and operations features are implemented and reviewed.
+
 ## Architecture
 
 ```text
-React / Vite UI
-    │ authenticated, same-origin JSON requests
+React / Vite UI ── Vercel CDN (public/index.html and assets)
+    │ same-origin authenticated requests
     ▼
-Express API ─────────── SQLite file on a persistent disk
-    │                  owner · sessions · folders · codes · scan events · file bytes
+Express API ─────── Vercel Function
+    ├── Neon Postgres (hosted) / SQLite (local and self-hosted)
+    ├── private Vercel Blob (hosted file bytes) / SQLite BLOB (local files)
     ├── qrcode + sharp → SVG / PNG downloads with optional center logo
-    └── GET /r/:slug   → record visit → HTTP 302 to current destination
+    └── GET /r/:slug → record visit → HTTP 302 to current destination
 ```
 
-The frontend lives in `client/`. Express and database logic live in `server/`. Vite builds the frontend into `dist/`, which Express serves in a normal deployment. The browser and API share one origin; no separate CORS configuration or browser API key is required.
+The frontend lives in `client/`. Express and data access live in `server/`. Vite builds the frontend into `dist/`; the Vercel build copies it into `public/` for CDN delivery. The browser and API share one origin; no separate CORS configuration or browser database key is required.
 
-This MVP implements **SQLite**, using Node’s built-in `node:sqlite` module. It does not include a PostgreSQL adapter. SQLite suits this personal, single-process app and keeps setup simple. A larger multi-user service would need additional authorization, migrations, operational controls, and likely a PostgreSQL-backed data layer.
+This MVP uses SQLite via Node’s built-in `node:sqlite` locally, and an initial PostgreSQL adapter for the Vercel trial. Both retain the single-owner model. A larger multi-user service still needs tenant-level authorization, email and account recovery, data migrations, operational controls, and more extensive security review.
 
 QR generation runs on your own server. It does not send destinations, uploaded logos, or analytics to a QR vendor. The server redirects visitors to the destination you selected; normal destination-site traffic is separate.
 
@@ -162,6 +181,8 @@ The supplied npm commands load `.env` automatically. Existing environment variab
 | `SETUP_TOKEN` | Optional for local setup, required for first-owner setup in production. Enter it in the setup screen. |
 | `TRUST_PROXY` | `0`; use `1` only when one trusted reverse proxy is the only route to the app |
 | `COOKIE_SECURE` | Automatically enabled for an HTTPS public URL; may be set explicitly to `true` or `false` |
+| `DATABASE_URL` | Vercel only; PostgreSQL connection string from Neon |
+| `BLOB_READ_WRITE_TOKEN` | Vercel only; supplied by linking the private Blob store to the project |
 
 Use a long random `SETUP_TOKEN` before publishing a fresh instance. Without a token, development setup accepts only local loopback access. After creating the owner, the setup endpoint cannot create another account. Keep `.env` private and outside version control.
 
@@ -233,7 +254,7 @@ Recovery requires local access to the database and the existing email; it cannot
 
 ## Authentication and scope
 
-Passwords use salted scrypt hashes. Sessions use random opaque tokens, store only token hashes in SQLite, and expire after seven days. Cookies are HttpOnly and SameSite; production HTTPS uses secure cookies. Mutating API requests check origins, login/setup attempts are throttled, inputs are validated, and database queries use bound parameters.
+Passwords use salted scrypt hashes. Sessions use random opaque tokens, store only token hashes in the database, and expire after seven days. Cookies are HttpOnly and SameSite; production HTTPS uses secure cookies. Mutating API requests check origins, login/setup attempts are throttled, inputs are validated, and database queries use bound parameters.
 
 The owner can manage all saved records. Public visitors can only follow enabled dynamic redirects. There is no public registration after initial setup, no multi-user sharing, and no separate administrator role. Qori is an MVP for personal use; backups, host updates, availability, and access to your server remain part of operating it.
 
@@ -252,6 +273,7 @@ All `/api` routes except health, session information, and authentication require
 | `GET /api/qrs/:id/download?format=png\|svg` | Download a saved design |
 | `POST /api/preview` | Render a design preview without saving |
 | `POST /api/assets?type=pdf\|image\|audio\|pptx` | Authenticated raw file upload; `Content-Type: application/octet-stream`, encoded filename in `X-File-Name` |
+| `POST /api/assets/upload-intent`, `POST /api/assets/upload-token`, `POST /api/assets/finalize` | Hosted authenticated direct-upload flow; raw upload endpoint is local-only |
 | `GET /api/assets/:id/content` | Owner-only uploaded-file preview |
 | `DELETE /api/assets/:id` | Remove an upload not referenced by a saved QR |
 | `GET`, `POST /api/folders` | List or create folders |
@@ -272,7 +294,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The backend tests use isolated temporary databases. Browser tests exercise the built app with a separate database so they do not use your personal account or records. Review the test output for the exact checks run in your environment. Test reports and screenshots are local development artifacts and are excluded from version control.
+The backend tests use isolated temporary databases. `server/hosted.test.js` runs PostgreSQL queries in PGlite with simulated private Blob storage, covering an 8 MB PDF, upload permissions, repeated finalization, download ranges, replacement/pause, analytics, folders and shared login throttling. This checks application behavior; real Neon connectivity, Blob uploads, CDN headers and Vercel routing still require the deployment smoke test above. Browser tests exercise the built app with a separate database so they do not use your personal account or records. Review the test output for the exact checks run in your environment. Test reports and screenshots are local development artifacts and are excluded from version control.
 
 Browser tests use Playwright’s Chromium by default. You can use an installed Microsoft Edge instead by setting `PLAYWRIGHT_CHANNEL=msedge` before running `npm run test:e2e` (`$env:PLAYWRIGHT_CHANNEL='msedge'` in PowerShell). This is useful on Windows when Edge is already available.
 

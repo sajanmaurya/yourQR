@@ -5,11 +5,11 @@
   "type": "module",
   "description": "A personal, self-hostable QR code workspace",
   "engines": {
-    "node": ">=24.0.0"
+    "node": "24.x"
   },
   "scripts": {
     "dev": "concurrently --kill-others -n api,web \"node --watch --env-file-if-exists=.env server/index.js\" \"vite --host 127.0.0.1\"",
-    "build": "npm run lint && vite build",
+    "build": "node scripts/clean-vercel-public.mjs && npm run lint && vite build && node scripts/prepare-vercel-public.mjs",
     "start": "node --env-file-if-exists=.env server/index.js",
     "test": "node --test server/*.test.js",
     "test:e2e": "playwright test",
@@ -18,6 +18,8 @@
     "lint": "eslint client shared server scripts tests *.js"
   },
   "dependencies": {
+    "@neondatabase/serverless": "^1.2.0",
+    "@vercel/blob": "^2.8.2",
     "express": "^5.1.0",
     "helmet": "^8.1.0",
     "lucide-react": "^0.468.0",
@@ -26,7 +28,11 @@
     "react-dom": "^19.1.0",
     "sharp": "^0.35.5"
   },
+  "overrides": {
+    "zod": "^4.6.6"
+  },
   "devDependencies": {
+    "@electric-sql/pglite": "^0.5.11",
     "@playwright/test": "^1.55.0",
     "@vitejs/plugin-react": "^5.0.0",
     "concurrently": "^9.2.0",

@@ -1,5 +1,6 @@
 import { contentType } from '../shared/content-types.js';
 import { ValidationError, validDestination } from './qr.js';
+import { dbGet } from './database.js';
 
 function field(payload, key, label, { optional = false, max = 300, preserve = false } = {}) {
   const raw = payload?.[key];
@@ -27,7 +28,7 @@ function email(payload, key, optional = false) {
 const escapeWifi = value => value.replace(/[\\;,:\"]/g, char => `\\${char}`);
 const escapeVcard = value => value.replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/;/g, '\\;').replace(/,/g, '\\,');
 
-export function resolveContent(category, input, context) {
+export async function resolveContent(category, input, context) {
   const meta = contentType(category);
   if (!meta) throw new ValidationError('Choose a supported QR content type.');
   const { publicBaseUrl, current, db } = context;
@@ -38,7 +39,7 @@ export function resolveContent(category, input, context) {
   if (meta.file) {
     const assetId = input.assetId ?? current?.assetId;
     if (typeof assetId !== 'string') throw new ValidationError(`Upload a ${meta.name} file first.`);
-    const asset = db.prepare('SELECT id,kind FROM assets WHERE id=?').get(assetId);
+    const asset = await dbGet(db, 'SELECT id,kind FROM assets WHERE id=?', [assetId]);
     if (!asset || asset.kind !== category) throw new ValidationError(`Choose an uploaded ${meta.name} file.`);
     const origin = current ? new URL(current.encodedValue).origin : publicBaseUrl;
     return { destination: `${origin}/files/${asset.id}`, storageType: 'url', payload: {}, assetId };

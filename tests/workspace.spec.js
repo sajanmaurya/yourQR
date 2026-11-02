@@ -125,6 +125,7 @@ test('personal workspace: setup, design, exports, redirects, folders, analytics,
   expect(exported.qrs).toHaveLength(2);
   expect(exported.folders).toHaveLength(1);
   expect(exported).not.toHaveProperty('owner');
+  await expect(page.getByRole('main').getByRole('button', { name: 'Log out', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Folders', exact: true }).click();
   await page.locator('summary[aria-label="Actions for folder Personal projects"]').click();
@@ -152,7 +153,9 @@ test('personal workspace: setup, design, exports, redirects, folders, analytics,
   await page.screenshot({ path: test.info().outputPath('mobile-editor.png'), fullPage: true });
   await page.getByRole('button', { name: 'Close dialog' }).click();
   await page.getByRole('button', { name: 'Open navigation' }).click();
-  await page.getByRole('button', { name: 'Sign out' }).click();
+  const sidebar = page.locator('.sidebar');
+  await expect(sidebar.getByRole('button', { name: 'Log out', exact: true })).toBeVisible();
+  await sidebar.getByRole('button', { name: 'Log out', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Welcome back.' })).toBeVisible();
   expect((await page.request.get('/api/qrs')).status()).toBe(401);
   await page.getByLabel('Email address').fill('tester@example.com');
@@ -314,7 +317,11 @@ test('unexpected view errors show a recovery screen and can be reloaded', async 
 });
 
 test('a changed Wi-Fi address gives a visible warning without breaking the dashboard', async ({ page }) => {
-  await page.request.post('/api/auth/setup', { data: { name: 'Network test', email: 'network@example.test', password: 'network-test-password-2026' } });
+  const login = await page.request.post('/api/auth/login', { data: { email: 'tester@example.com', password: 'test-password-for-Qori-2026' } });
+  if (login.status() === 401) {
+    const setup = await page.request.post('/api/auth/setup', { data: { name: 'Network test', email: 'network@example.test', password: 'network-test-password-2026' } });
+    expect(setup.status()).toBe(201);
+  } else expect(login.ok()).toBe(true);
   await page.route('**/api/auth/session', async route => {
     const response = await route.fetch();
     const state = await response.json();
