@@ -361,7 +361,7 @@ export function createApp(options = {}) {
   if (existsSync(path.join(distPath, 'index.html'))) {
     app.use(express.static(distPath, { index: false, maxAge: environment === 'production' ? '1h' : 0 }));
     app.use((req, res, next) => {
-      if (req.method === 'GET' && req.accepts('html')) return res.sendFile(path.join(distPath, 'index.html'));
+      if (req.method === 'GET' && req.accepts('html')) return res.set('Cache-Control', 'no-store, max-age=0').sendFile(path.join(distPath, 'index.html'));
       next();
     });
   }
