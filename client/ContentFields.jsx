@@ -29,7 +29,7 @@ export function ContentFields({ draft, qr, update, onUploading, setError, blobUp
     setUploadBusy(true); setUploadSize(file.size); setUploadStatus('Preparing upload…'); onUploading(true); setError('');
     try {
       let asset;
-      if (blobUploads) {
+      if (blobUploads && file.size > 4 * 1024 * 1024) {
         const intentResponse = await fetch('/api/assets/upload-intent', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ type: meta.id, name: file.name }) });
         const intent = await intentResponse.json();
         if (!intentResponse.ok) throw new Error(intent.error || 'Upload could not start.');

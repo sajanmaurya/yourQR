@@ -2,7 +2,7 @@ import express from 'express';
 import sharp from 'sharp';
 import { randomUUID, createHash } from 'node:crypto';
 import { handleUpload } from '@vercel/blob/client';
-import { del as deleteBlob, get as getBlob } from '@vercel/blob';
+import { del as deleteBlob, get as getBlob, put as putBlob } from '@vercel/blob';
 import { dbGet, dbRun } from './database.js';
 import { contentType } from '../shared/content-types.js';
 import { ValidationError } from './qr.js';
@@ -72,7 +72,7 @@ async function validateFile(kind, bytes, name, cloud = false) {
   return { bytes, name, mime };
 }
 
-export function registerAssets(app, db, blobStore = { get: getBlob, del: deleteBlob, handleUpload }) {
+export function registerAssets(app, db, blobStore = { get: getBlob, del: deleteBlob, put: putBlob, handleUpload }) {
   if (db.driver === 'postgres') {
     app.post('/api/assets/upload-intent', async (req, res) => {
       const meta = contentType(req.body?.type);
@@ -119,7 +119,7 @@ export function registerAssets(app, db, blobStore = { get: getBlob, del: deleteB
     });
   }
   app.post('/api/assets', (req, res, next) => {
-    if (db.driver === 'postgres') return res.status(400).json({ error: 'Use the direct file upload flow on this hosted workspace.' });
+    if (db.driver === 'postgres' && Number(req.get('content-length')) > 4 * 1024 * 1024) return res.status(400).json({ error: 'Use direct upload for files above 4 MB.' });
     next();
   }, express.raw({ type: 'application/octet-stream', limit: '25mb' }), async (req, res) => {
     let name;
@@ -127,7 +127,14 @@ export function registerAssets(app, db, blobStore = { get: getBlob, del: deleteB
     const kind = req.query.type;
     const file = await validateFile(kind, req.body, name);
     const id = randomUUID(), createdAt = new Date().toISOString();
-    await dbRun(db, 'INSERT INTO user_assets(id,user_id,kind,name,mime,size,bytes,created_at) VALUES(?,?,?,?,?,?,?,?)', [id, req.user.id, kind, file.name, file.mime, file.bytes.length, file.bytes, createdAt]);
+    let blobPath = null;
+    if (db.driver === 'postgres') {
+      if (file.bytes.length > 4 * 1024 * 1024) throw new ValidationError('Use direct upload for files above 4 MB.');
+      const pathname = `assets/user-${req.user.id}/${id}/${file.name.replace(/[^a-zA-Z0-9._ -]/g, '_')}`;
+      const blob = await blobStore.put(pathname, file.bytes, { access: 'private', contentType: file.mime, addRandomSuffix: false, allowOverwrite: false });
+      blobPath = blob.pathname;
+    }
+    await dbRun(db, 'INSERT INTO user_assets(id,user_id,kind,name,mime,size,bytes,blob_path,created_at) VALUES(?,?,?,?,?,?,?,?,?)', [id, req.user.id, kind, file.name, file.mime, file.bytes.length, blobPath ? null : file.bytes, blobPath, createdAt]);
     await dbRun(db, 'DELETE FROM user_assets WHERE user_id=? AND created_at < ? AND id NOT IN (SELECT asset_id FROM user_qr_codes WHERE asset_id IS NOT NULL)', [req.user.id, new Date(Date.now() - 86400000).toISOString()]);
     res.status(201).json({ asset: { id, kind, name: file.name, mime: file.mime, size: file.bytes.length, createdAt } });
   });

@@ -13,6 +13,7 @@ test('hosted PostgreSQL workspace and private PDF lifecycle', async t => {
   await pg.exec(postgresSchema); // DDL can be rerun by another cold start.
   const objects = new Map();
   const blobStore = {
+    async put(pathname, bytes) { objects.set(pathname, Buffer.from(bytes)); return { pathname }; },
     async handleUpload({ body, onBeforeGenerateToken }) { return onBeforeGenerateToken(body.pathname); },
     async get(pathname) {
       const bytes = objects.get(pathname);
@@ -87,6 +88,13 @@ test('hosted PostgreSQL workspace and private PDF lifecycle', async t => {
     return { ...intent, asset };
   }
   await t.test('large PDF, idempotent finalization, ranges and analytics', async () => {
+    const smallPdf = Buffer.from('%PDF-1.4\nsmall same-site upload\n%%EOF');
+    const smallResponse = await fetch(base + '/api/assets?type=pdf', { method: 'POST', headers: { cookie, 'content-type': 'application/octet-stream', 'X-File-Name': 'small.pdf' }, body: smallPdf });
+    const smallResult = await smallResponse.json();
+    assert.equal(smallResponse.status, 201, JSON.stringify(smallResult));
+    const stored = await pg.query('SELECT bytes,blob_path,user_id FROM user_assets WHERE id=$1', [smallResult.asset.id]);
+    assert.equal(stored.rows[0].bytes, null);
+    assert.deepEqual(objects.get(stored.rows[0].blob_path), smallPdf);
     assert.equal((await request('/api/assets/upload-intent', { method: 'POST', body: { type: 'pdf' }, authenticated: false })).status, 401);
     assert.equal((await request('/api/assets', { method: 'POST', body: {} })).status, 400);
     assert.equal((await request('/api/assets/upload-token', { method: 'POST', body: { pathname: 'assets/owner-1/unknown.pdf' } })).status, 400);
