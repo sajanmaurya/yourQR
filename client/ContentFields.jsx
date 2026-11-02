@@ -34,12 +34,7 @@ export function ContentFields({ draft, qr, update, onUploading, setError, blobUp
         const intent = await intentResponse.json();
         if (!intentResponse.ok) throw new Error(intent.error || 'Upload could not start.');
         const { upload: uploadBlob } = await import('@vercel/blob/client');
-        const controller = new AbortController();
-        const timeout = setTimeout(() => controller.abort(), 180000);
-        let blob;
-        try {
-          blob = await uploadBlob(intent.pathname, file, { access: 'private', handleUploadUrl: '/api/assets/upload-token', contentType: file.type || 'application/octet-stream', multipart: false, abortSignal: controller.signal, onUploadProgress: progress => setUploadStatus(`Uploading… ${Math.round(progress.percentage)}%`) });
-        } finally { clearTimeout(timeout); }
+        const blob = await uploadBlob(intent.pathname, file, { access: 'private', handleUploadUrl: '/api/assets/upload-token', contentType: file.type || 'application/octet-stream', multipart: file.size > 5 * 1024 * 1024, onUploadProgress: progress => setUploadStatus(`Uploading… ${Math.round(progress.percentage)}%`) });
         setUploadStatus('Checking your file…');
         const response = await fetch('/api/assets/finalize', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pathname: blob.pathname }) });
         const result = await response.json();
@@ -54,7 +49,7 @@ export function ContentFields({ draft, qr, update, onUploading, setError, blobUp
       update('asset', asset);
       update('assetId', asset.id);
       if (!draft.name.trim()) update('name', file.name.replace(/\.[^.]+$/, '').slice(0, 100));
-    } catch (error) { setError(error.name === 'AbortError' ? 'Upload timed out after 3 minutes. Check your connection and try again.' : error.message); }
+    } catch (error) { setError(error.message === 'Vercel Blob: The request was aborted.' ? 'The upload connection was interrupted. Please choose the file and try again.' : error.message); }
     finally { setUploadBusy(false); setUploadStatus(''); setUploadSize(0); onUploading(false); }
   }
   if (meta?.file) return <div className="file-content-fields"><div className="field"><label htmlFor="qr-file">{qr ? `Replace ${meta.name} file` : `${meta.name} file`}<span className="required">*</span></label><input ref={inputRef} id="qr-file" type="file" className="visually-hidden" accept={meta.accept} aria-label={`Upload ${meta.name} file`} onChange={upload} disabled={uploadBusy}/><button type="button" className={`file-upload-zone ${draft.asset ? 'has-file' : ''}`} onClick={() => inputRef.current?.click()} disabled={uploadBusy}><span className="file-upload-icon">{uploadBusy ? <Spinner text=""/> : <Icons.FileUp size={28}/>}</span><strong>{uploadBusy ? uploadStatus : draft.asset?.name || `Choose a ${meta.name} file`}</strong><span>{uploadBusy ? formatBytes(fileSizeSafe(inputRef.current)) : draft.asset ? `${formatBytes(draft.asset.size)} · Click to replace` : `Stored on your server · Up to ${meta.maxMB} MB`}</span></button>{draft.asset && <a className="text-button file-preview-link" href={`/api/assets/${draft.asset.id}/content`} target="_blank" rel="noopener noreferrer"><Icons.ExternalLink size={14}/>Open uploaded file</a>}<small>{meta.id === 'pdf' ? 'People scan your QR to open this PDF. Upload a replacement here and save; your printed QR stays the same.' : meta.id === 'pptx' ? 'People scan to download the presentation. PPTX opens in a compatible presentation app.' : meta.id === 'audio' ? 'MP3, WAV, or Ogg. Scanning opens the recording in the browser or its media player.' : 'PNG, JPEG, or WebP. Scanning opens the uploaded image.'}</small></div><div className="file-sharing-note"><Icons.Globe2 size={18}/><p>Anyone with an active code’s link can access the file. Pause the code to stop serving it. A reachable server is required.</p></div></div>;
