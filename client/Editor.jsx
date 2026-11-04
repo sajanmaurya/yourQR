@@ -16,7 +16,7 @@ function luminance(color) {
   return color.slice(1).match(/../g).map(value => parseInt(value, 16) / 255).map(value => value <= .04045 ? value / 12.92 : ((value + .055) / 1.055) ** 2.4).reduce((sum, value, index) => sum + value * [.2126, .7152, .0722][index], 0);
 }
 
-export default function Editor({ qr, folders, initialFolder, publicBaseUrl, onClose, onSaved, notify }) {
+export default function Editor({ qr, folders, initialFolder, publicBaseUrl, blobUploads = false, onClose, onSaved, notify }) {
   const linkBaseUrl = qr?.shortUrl ? qr.shortUrl.slice(0, qr.shortUrl.lastIndexOf('/r/')) : publicBaseUrl;
   const [draft, setDraft] = useState(qr ? { ...qr, folderId: qr.folderId || '', slug: qr.slug || '' } : {
     name: '', type: 'dynamic', contentType: 'url', destination: '', slug: '', folderId: initialFolder || '', fgColor: '#183f35', bgColor: '#ffffff', logoDataUrl: null,
@@ -101,10 +101,10 @@ export default function Editor({ qr, folders, initialFolder, publicBaseUrl, onCl
             <button type="button" className={`type-option ${draft.type === 'dynamic' ? 'selected' : ''}`} disabled={!!qr || !!meta?.mode || uploading} onClick={() => update('type', 'dynamic')}><span className="type-icon"><RefreshCw size={19} /></span><strong>Dynamic</strong><small>Edit links. Track visits.</small>{draft.type === 'dynamic' && <Check className="type-check" size={15} />}</button>
             <button type="button" className={`type-option ${draft.type === 'static' ? 'selected' : ''}`} disabled={!!qr || !!meta?.mode || uploading} onClick={() => update('type', 'static')}><span className="type-icon"><Zap size={19} /></span><strong>Static</strong><small>Direct. No server needed.</small>{draft.type === 'static' && <Check className="type-check" size={15} />}</button>
           </div></>}</div>
-          {meta?.file && <ContentFields draft={draft} qr={qr} update={update} onUploading={setUploading} setError={setError}/>}
+          {meta?.file && <ContentFields draft={draft} qr={qr} update={update} onUploading={setUploading} setError={setError} blobUploads={blobUploads}/>}
           <div className="field"><label htmlFor="qr-name">QR code name <span className="required">*</span></label><input id="qr-name" name="name" value={draft.name} onChange={event => update('name', event.target.value)} placeholder="e.g. My portfolio" maxLength={100} autoComplete="off" /><small>Just for you. Make it easy to find later.</small></div>
           <div className="field"><label htmlFor="qr-content-type">Content</label><Select id="qr-content-type" value={draft.contentType} disabled={!!qr || uploading} onChange={event => chooseType(contentType(event.target.value))}>{CONTENT_TYPES.map(item => <option key={item.id} value={item.id}>{item.name}</option>)}</Select></div>
-          {!meta?.file && <ContentFields draft={draft} qr={qr} update={update} onUploading={setUploading} setError={setError}/>}
+          {!meta?.file && <ContentFields draft={draft} qr={qr} update={update} onUploading={setUploading} setError={setError} blobUploads={blobUploads}/>}
           {draft.type === 'dynamic' && <div className="field"><label htmlFor="qr-slug">Short link <span className="label-hint">{qr ? 'Permanent' : 'Optional'}</span></label><div className="slug-input"><span>{linkBaseUrl.replace(/^https?:\/\//, '')}/r/</span><input id="qr-slug" value={draft.slug} onChange={event => update('slug', event.target.value.toLowerCase().replace(/[^a-z0-9-]/g, ''))} placeholder="auto-generated" disabled={!!qr} minLength={draft.slug ? 3 : undefined} maxLength={48} /></div><small>{qr ? 'The short link stays fixed, so existing prints keep working.' : 'Leave blank for a unique link. 3–48 letters, numbers, or hyphens.'}</small></div>}
           <div className="field"><label htmlFor="qr-folder">Folder <span className="label-hint">Optional</span></label><Select id="qr-folder" value={draft.folderId} onChange={event => update('folderId', event.target.value)}><option value="">Unfiled</option>{folders.map(folder => <option key={folder.id} value={folder.id}>{folder.name}</option>)}</Select></div>
           <button type="button" className="text-button next-design" onClick={() => setTab('design')}>Make it your own<ArrowRight size={16} /></button>
@@ -124,7 +124,7 @@ export default function Editor({ qr, folders, initialFolder, publicBaseUrl, onCl
           {previewBusy && <span className="preview-spinner"><Spinner text="" /></span>}
         </div></div><h3 className="preview-name">{draft.name.trim() || 'Your next connection'}</h3><span className="preview-content-kind">{meta?.name}</span><p className="preview-type">{draft.type === 'dynamic' ? <><RefreshCw size={14} />Dynamic QR code</> : <><Zap size={14} />Static QR code</>}</p>
         {!qr && <p className="preview-save-note">Preview only. Save your code before scanning or downloading.</p>}
-        <div className="preview-tip"><CircleHelp size={18} /><p>{draft.type === 'dynamic' ? <>Your code points to a permanent short link. <strong>Your destination can change.</strong></> : <>Your content lives inside the code. <strong>It works without Qori once downloaded.</strong></>}</p></div>
+        <div className="preview-tip"><CircleHelp size={18} /><p>{draft.type === 'dynamic' ? <>Your code points to a permanent short link. <strong>Your destination can change.</strong></> : <>Your content lives inside the code. <strong>It works without yourQR once downloaded.</strong></>}</p></div>
         {draft.type === 'dynamic' && /^(https?:\/\/)?(localhost|127\.0\.0\.1|\[::1\])(:|\/|$)/i.test(linkBaseUrl) && <p className="local-preview-note"><Globe2 size={15} />Local links work on this computer. Use a public address before printing for others.</p>}
         {qr && <div className="editor-downloads"><span>Download saved design</span><div><button type="button" className="button secondary small" onClick={() => download('png')}><Download size={15} />PNG</button><button type="button" className="button secondary small" onClick={() => download('svg')}><Download size={15} />SVG</button></div><small>Save changes first to include your latest design.</small></div>}
       </aside>

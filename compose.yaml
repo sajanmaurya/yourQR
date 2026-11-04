@@ -11,7 +11,6 @@ services:
       PORT: 8787
       DB_PATH: /app/data/qori.sqlite
       PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?Set PUBLIC_BASE_URL to your permanent HTTPS URL in .env}
-      SETUP_TOKEN: ${SETUP_TOKEN:-}
       TRUST_PROXY: "1"
       COOKIE_SECURE: "true"
     volumes:

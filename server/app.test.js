@@ -48,10 +48,10 @@ async function createQR(f, props = {}) {
   return response.body.qr;
 }
 
-test('owner setup, protected API, login, CSRF checks, logout, no account takeover', async (t) => {
+test('registration, protected API, login, CSRF checks, logout, and duplicate email protection', async (t) => {
   const f = await fixture(); t.after(f.close);
   const initial = await f.json('/api/auth/session');
-  assert.equal(initial.body.setupRequired, true);
+  assert.equal(initial.body.setupRequired, false);
   assert.equal(initial.body.authenticated, false);
   assert.equal((await f.api('/api/qrs')).status, 401);
   assert.equal((await f.json('/api/auth/setup', { method: 'POST', body: { ...owner, password: 'short' } })).status, 400);
@@ -60,7 +60,7 @@ test('owner setup, protected API, login, CSRF checks, logout, no account takeove
   assert.match(setup.headers.get('set-cookie'), /HttpOnly/i);
   assert.match(setup.headers.get('set-cookie'), /SameSite=Strict/i);
   assert.equal(setup.body.user.email, owner.email);
-  assert.equal((await f.json('/api/auth/setup', { method: 'POST', body: { ...owner, email: 'attacker@example.com' } })).status, 409);
+  assert.equal((await f.json('/api/auth/register', { method: 'POST', body: owner })).status, 409);
   const session = await f.json('/api/auth/session');
   assert.equal(session.body.authenticated, true);
   assert.equal('password_hash' in session.body.user, false);
@@ -72,6 +72,29 @@ test('owner setup, protected API, login, CSRF checks, logout, no account takeove
   assert.equal((await f.json('/api/auth/login', { method: 'POST', body: { email: owner.email, password: 'wrong' } })).status, 401);
   assert.equal((await f.json('/api/auth/login', { method: 'POST', body: { email: owner.email.toUpperCase(), password: owner.password } })).status, 200);
   assert.equal((await f.json('/api/qrs')).status, 200);
+});
+
+test('multiple users receive isolated QR codes, folders, and direct object access', async (t) => {
+  const f = await fixture(); t.after(f.close);
+  assert.equal((await f.json('/api/auth/register', { method: 'POST', body: owner })).status, 201);
+  const cookieA = f.getCookie();
+  const folderA = await f.json('/api/folders', { method: 'POST', body: { name: 'Private A' }, headers: { cookie: cookieA } });
+  assert.equal(folderA.status, 201);
+  const qrA = await f.json('/api/qrs', { method: 'POST', body: { name: 'Only A', type: 'dynamic', contentType: 'url', destination: 'https://a.example' }, headers: { cookie: cookieA } });
+  assert.equal(qrA.status, 201);
+
+  const userB = { name: 'Second User', email: 'second@example.com', password: 'second-user-password-123' };
+  assert.equal((await f.json('/api/auth/register', { method: 'POST', body: userB, authenticated: false })).status, 201);
+  const cookieB = f.getCookie();
+  const listB = await f.json('/api/qrs', { headers: { cookie: cookieB } });
+  assert.equal(listB.status, 200);
+  assert.deepEqual(listB.body.qrs, []);
+  assert.equal((await f.json(`/api/qrs/${qrA.body.qr.id}`, { method: 'PATCH', body: { name: 'Stolen' }, headers: { cookie: cookieB } })).status, 404);
+  assert.equal((await f.json(`/api/folders/${folderA.body.folder.id}`, { method: 'DELETE', headers: { cookie: cookieB } })).status, 404);
+
+  const listA = await f.json('/api/qrs', { headers: { cookie: cookieA } });
+  assert.equal(listA.body.qrs.length, 1);
+  assert.equal(listA.body.qrs[0].name, 'Only A');
 });
 
 test('dynamic destination editing keeps encoded URL; GET counts and HEAD does not; pause and deletion work', async (t) => {
@@ -123,8 +146,8 @@ test('static URL and text remain permanent, folder deletion unfiles codes', asyn
   assert.equal((await f.json(`/api/folders/${folder.id}`, { method: 'PATCH', body: { name: 'Projects' } })).status, 200);
   assert.equal((await f.json(`/api/folders/${folder.id}`, { method: 'DELETE' })).status, 200);
   assert.equal((await f.json('/api/qrs')).body.qrs[0].folderId, null);
-  const text = await createQR(f, { type: 'static', contentType: 'text', destination: 'Hello from Qori! नमस्ते 🌿\nA second line.', name: 'Text' });
-  assert.equal(text.encodedValue, 'Hello from Qori! नमस्ते 🌿\nA second line.');
+  const text = await createQR(f, { type: 'static', contentType: 'text', destination: 'Hello from yourQR! नमस्ते 🌿\nA second line.', name: 'Text' });
+  assert.equal(text.encodedValue, 'Hello from yourQR! नमस्ते 🌿\nA second line.');
   const png = Buffer.from(await (await f.api(`/api/qrs/${text.id}/download?format=png`)).arrayBuffer());
   const { data, info } = await sharp(png).ensureAlpha().raw().toBuffer({ resolveWithObject: true });
   assert.equal(jsQR(new Uint8ClampedArray(data), info.width, info.height)?.data, text.encodedValue);
@@ -226,7 +249,7 @@ test('database persists owner, session, folders, code and scan history across re
   assert.equal(redirectLoop.status, 400);
 });
 
-test('offline password recovery changes owner password and revokes existing sessions', async (t) => {
+test('offline password recovery changes one account password and revokes its sessions', async (t) => {
   const dir = await mkdtemp(path.join(os.tmpdir(), 'qori-test-'));
   const dbPath = path.join(dir, 'qori.sqlite');
   let f = await fixture({ dbPath });
@@ -248,11 +271,9 @@ test('offline password recovery changes owner password and revokes existing sess
   assert.equal((await f.json('/api/auth/login', { method: 'POST', body: { email: owner.email, password: newPassword } })).status, 200);
 });
 
-test('production setup token, secure cookies, and auth throttling', async (t) => {
-  assert.throws(() => createApp({ dbPath: ':memory:', environment: 'production', setupToken: '' }), /SETUP_TOKEN/);
-  const f = await fixture({ environment: 'production', publicBaseUrl: 'https://qr.example.com', setupToken: 'test-long-setup-token', secureCookie: true }); t.after(f.close);
-  assert.equal((await f.setup()).status, 403);
-  const setup = await f.json('/api/auth/setup', { method: 'POST', body: { ...owner, setupToken: 'test-long-setup-token' } });
+test('production registration uses secure cookies and auth throttling', async (t) => {
+  const f = await fixture({ environment: 'production', publicBaseUrl: 'https://qr.example.com', secureCookie: true }); t.after(f.close);
+  const setup = await f.json('/api/auth/register', { method: 'POST', body: owner });
   assert.equal(setup.status, 201);
   assert.match(setup.headers.get('set-cookie'), /Secure/);
   for (let i = 0; i < 11; i++) await f.json('/api/auth/login', { method: 'POST', body: { email: owner.email, password: 'incorrect' } });

@@ -16,15 +16,17 @@ async function menu(page, name, action) {
   await page.locator('details[open]').getByRole('button', { name: action, exact: true }).click();
 }
 
-test('personal workspace: setup, design, exports, redirects, folders, analytics, and mobile', async ({ page }) => {
+test('multi-user workspace: registration, design, exports, redirects, folders, analytics, logout, and mobile', async ({ page }) => {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
-  await expect(page.getByRole('heading', { name: 'Make yourself at home.' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Welcome back.' })).toBeVisible();
+  await page.getByRole('button', { name: 'New to yourQR? Create an account' }).click();
+  await expect(page.getByRole('heading', { name: 'Create your account.' })).toBeVisible();
   await page.getByLabel('Your name').fill('Local Tester');
   await page.getByLabel('Email address').fill('tester@example.com');
-  await page.getByLabel('Password', { exact: true }).fill('test-password-for-Qori-2026');
-  await page.getByRole('button', { name: 'Create my workspace' }).click();
+  await page.getByLabel('Password', { exact: true }).fill('test-password-for-yourQR-2026');
+  await page.getByRole('button', { name: 'Create free account' }).click();
   await expect(page.getByRole('heading', { name: 'My QR codes.' })).toBeVisible();
   await expect(page.locator('.host-status')).toHaveText('Local workspace');
   await expect(page.getByText('Your first connection starts here.')).toBeVisible();
@@ -125,6 +127,7 @@ test('personal workspace: setup, design, exports, redirects, folders, analytics,
   expect(exported.qrs).toHaveLength(2);
   expect(exported.folders).toHaveLength(1);
   expect(exported).not.toHaveProperty('owner');
+  await expect(page.getByRole('main').getByRole('button', { name: 'Log out', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'Folders', exact: true }).click();
   await page.locator('summary[aria-label="Actions for folder Personal projects"]').click();
@@ -152,12 +155,14 @@ test('personal workspace: setup, design, exports, redirects, folders, analytics,
   await page.screenshot({ path: test.info().outputPath('mobile-editor.png'), fullPage: true });
   await page.getByRole('button', { name: 'Close dialog' }).click();
   await page.getByRole('button', { name: 'Open navigation' }).click();
-  await page.getByRole('button', { name: 'Sign out' }).click();
+  const sidebar = page.locator('.sidebar');
+  await expect(sidebar.getByRole('button', { name: 'Log out', exact: true })).toBeVisible();
+  await sidebar.getByRole('button', { name: 'Log out', exact: true }).click();
   await expect(page.getByRole('heading', { name: 'Welcome back.' })).toBeVisible();
   expect((await page.request.get('/api/qrs')).status()).toBe(401);
   await page.getByLabel('Email address').fill('tester@example.com');
-  await page.getByLabel('Password', { exact: true }).fill('test-password-for-Qori-2026');
-  await page.getByRole('button', { name: 'Sign in to Qori' }).click();
+  await page.getByLabel('Password', { exact: true }).fill('test-password-for-yourQR-2026');
+  await page.getByRole('button', { name: 'Sign in to yourQR' }).click();
   await expect(page.getByRole('heading', { name: 'My QR codes.' })).toBeVisible();
   await expect(page.locator('.qr-card')).toHaveCount(2);
 
@@ -174,8 +179,8 @@ test('personal workspace: setup, design, exports, redirects, folders, analytics,
 test('PDF QR uploads and replaces documents; all types are selectable and Wi-Fi works', async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('Email address').fill('tester@example.com');
-  await page.getByLabel('Password', { exact: true }).fill('test-password-for-Qori-2026');
-  await page.getByRole('button', { name: 'Sign in to Qori' }).click();
+  await page.getByLabel('Password', { exact: true }).fill('test-password-for-yourQR-2026');
+  await page.getByRole('button', { name: 'Sign in to yourQR' }).click();
   await expect(page.getByRole('heading', { name: 'My QR codes.' })).toBeVisible();
   await page.getByRole('button', { name: 'Create QR code', exact: true }).click();
   let dialog = page.getByRole('dialog');
@@ -256,8 +261,8 @@ test('review improvements: mobile PDF entry, share/download, clipboard fallback,
   page.on('pageerror', error => errors.push(error.message));
   await page.goto('/');
   await page.getByLabel('Email address').fill('tester@example.com');
-  await page.getByLabel('Password', { exact: true }).fill('test-password-for-Qori-2026');
-  await page.getByRole('button', { name: 'Sign in to Qori' }).click();
+  await page.getByLabel('Password', { exact: true }).fill('test-password-for-yourQR-2026');
+  await page.getByRole('button', { name: 'Sign in to yourQR' }).click();
   await expect(page.getByRole('heading', { name: 'My QR codes.' })).toBeVisible();
   await page.setViewportSize({ width: 390, height: 844 });
   const cards = page.locator('.qr-card');
@@ -302,8 +307,8 @@ test('review improvements: mobile PDF entry, share/download, clipboard fallback,
 test('unexpected view errors show a recovery screen and can be reloaded', async ({ page }) => {
   await page.goto('/');
   await page.getByLabel('Email address').fill('tester@example.com');
-  await page.getByLabel('Password', { exact: true }).fill('test-password-for-Qori-2026');
-  await page.getByRole('button', { name: 'Sign in to Qori' }).click();
+  await page.getByLabel('Password', { exact: true }).fill('test-password-for-yourQR-2026');
+  await page.getByRole('button', { name: 'Sign in to yourQR' }).click();
   await expect(page.getByRole('heading', { name: 'My QR codes.' })).toBeVisible();
   await page.route('**/api/qrs', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ qrs: null }) }));
   await page.reload();
@@ -314,7 +319,11 @@ test('unexpected view errors show a recovery screen and can be reloaded', async 
 });
 
 test('a changed Wi-Fi address gives a visible warning without breaking the dashboard', async ({ page }) => {
-  await page.request.post('/api/auth/setup', { data: { name: 'Network test', email: 'network@example.test', password: 'network-test-password-2026' } });
+  const login = await page.request.post('/api/auth/login', { data: { email: 'tester@example.com', password: 'test-password-for-yourQR-2026' } });
+  if (login.status() === 401) {
+    const setup = await page.request.post('/api/auth/setup', { data: { name: 'Network test', email: 'network@example.test', password: 'network-test-password-2026' } });
+    expect(setup.status()).toBe(201);
+  } else expect(login.ok()).toBe(true);
   await page.route('**/api/auth/session', async route => {
     const response = await route.fetch();
     const state = await response.json();

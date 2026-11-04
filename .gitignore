@@ -1,9 +1,12 @@
 node_modules/
 dist/
+public/index.html
+public/assets/
 data/
 .env
 .env.*
 !.env.example
+.vercel/
 playwright-report/
 test-results/
 *.log

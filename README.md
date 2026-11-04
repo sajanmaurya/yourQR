@@ -1,10 +1,10 @@
-# Qori
+# yourQR
 
-A personal, self-hostable QR code workspace. Create attractive codes, keep them in folders, change a dynamic code’s destination after printing, and see visits to your redirect links. Qori uses its own design and assets; it is inspired by the QR management workflow, with no ME-QR branding or proprietary assets.
+A multi-user, self-hostable QR code workspace. Every person can create an account with a private library, folders, files, and analytics. yourQR uses its own design and assets; it is inspired by the QR management workflow, with no ME-QR branding or proprietary assets.
 
 ## What is included
 
-- One personal owner account, first-run setup, login and logout. There are no shared default credentials.
+- Public email/password registration, login and logout, with a separate private workspace for every account.
 - Saved static URL/text codes and dynamic URL codes.
 - All 19 QR types visible in the reference screenshot: URL, PDF, image, Play Market / App Store, text, WhatsApp, YouTube, Instagram, Facebook, Telegram, vCard, map, Wi-Fi, audio, email, booking, phone call, PPTX, and Smart QR.
 - Stable redirect slugs, editable dynamic destinations, and pause/resume.
@@ -20,17 +20,17 @@ The database starts empty. All counters come from saved records and actual redir
 
 1. Click **Create QR code**, then choose **PDF**.
 2. Upload a PDF of up to **20 MB**. Give the code a name and optionally choose a permanent short-link slug, folder, colors, and logo.
-3. Save, then download its QR as PNG or SVG. A scan opens the PDF from your Qori server.
+3. Save, then download its QR as PNG or SVG. A scan opens the PDF from your yourQR server.
 4. To update the document, open **Edit code**, upload a replacement PDF, and **Save changes**. The QR image and its permanent short link stay the same.
 
-Your uploaded files are stored as binary data inside SQLite, alongside your saved records. No external file host or QR service is involved. A full stopped-database backup includes the files. The JSON workspace export includes file metadata and references, **not file contents**.
+On a local or self-hosted SQLite installation, uploaded files are stored inside the database. On Vercel, PostgreSQL stores file metadata and Vercel Blob stores the private file contents; yourQR checks the file when it is finalized and serves it through the authenticated/active-code checks in the app. A JSON workspace export includes file metadata and references, **not file contents**.
 
 Anyone who has an active file code's link can access its document; viewers do not need an owner login. Pausing or deleting the code blocks further serving of its file, unless another active code references that same upload. Replacing a file removes public access to its previous upload unless another active code uses it. Files already downloaded or cached by a recipient cannot be recalled. Newly uploaded files without a saved QR are private to the owner; abandoned uploads are collected after 24 hours during a later upload.
 
 | File type | Accepted formats | Upload limit | Scan result |
 |---|---|---|---|
 | PDF | PDF | 20 MB | Browser PDF viewer, or download depending on the scanning browser |
-| Image | PNG, JPEG, WebP; under 20 megapixels | 10 MB | Opens the image; stored as PNG |
+| Image | PNG, JPEG, WebP; under 20 megapixels | 10 MB | Opens the image; local uploads converted to PNG |
 | Audio | MP3, WAV, Ogg | 25 MB | Browser playback or the device's media player |
 | PPTX | `.pptx` presentation | 20 MB | Downloads for opening in a presentation app |
 
@@ -79,7 +79,7 @@ npm run build
 npm start
 ```
 
-Open **[http://localhost:8787](http://localhost:8787)**. Create your owner account on the first screen; use a password with at least 12 characters. Your codes, folders, sessions, and analytics are stored in `data/qori.sqlite`.
+Open **[http://localhost:8787](http://localhost:8787)**. Select **Create an account** and use a password with at least 12 characters. Each account sees only its own codes, folders, files, sessions, and analytics; local data is stored in `data/qori.sqlite`.
 
 For development with automatic reload:
 
@@ -95,7 +95,7 @@ The built app and development app use the same local database. Stop one API inst
 
 ### Use a phone on the same Wi-Fi
 
-For a Wi-Fi-only installation, stop Qori, find your computer's Wi-Fi IPv4 address with `ipconfig`, then run this from the project folder:
+For a Wi-Fi-only installation, stop yourQR, find your computer's Wi-Fi IPv4 address with `ipconfig`, then run this from the project folder:
 
 ```powershell
 npm run share:wifi -- 192.168.1.20
@@ -104,7 +104,7 @@ npm start
 
 Replace the example IP with your computer's actual address. This saves `HOST=0.0.0.0` and the Wi-Fi `PUBLIC_BASE_URL` in your private `.env`. The command backs up SQLite and updates existing dynamic codes whose QR address contains localhost/loopback or this app's previous Wi-Fi origin. Account, uploaded files, folders, slugs, and scan history are preserved. **Download affected QR images again**; previously downloaded images still contain the old localhost address.
 
-On Windows, run `enable-wifi-firewall.ps1` once in administrator PowerShell if inbound access is blocked. It permits this Node app on Wi-Fi, TCP 8787, from the local subnet only. It does not configure router forwarding. Connect the phone and computer to the same Wi-Fi or hotspot, open the Wi-Fi address on the phone, and keep the computer awake with Qori running. If your network isolates connected devices, that router/hotspot setting must allow them to communicate.
+On Windows, run `enable-wifi-firewall.ps1` once in administrator PowerShell if inbound access is blocked. It permits this Node app on Wi-Fi, TCP 8787, from the local subnet only. It does not configure router forwarding. Connect the phone and computer to the same Wi-Fi or hotspot, open the Wi-Fi address on the phone, and keep the computer awake with yourQR running. If your network isolates connected devices, that router/hotspot setting must allow them to communicate.
 
 A Wi-Fi IP address can change when you switch networks or reconnect. A DHCP reservation in your router can keep the computer's address stable for printed codes. This Wi-Fi setup does not require internet hosting or a public domain.
 
@@ -112,39 +112,58 @@ A Wi-Fi IP address can change when you switch networks or reconnect. A DHCP rese
 |---|---|---|
 | Encoded content | The destination URL or text itself | A stable URL such as `https://qr.example.com/r/menu` |
 | Change the destination after printing | Generate and print a new code | Edit the saved destination; the printed code stays valid |
-| Requires Qori to be online when scanned | No | Yes |
-| Qori scan analytics | Unavailable | Redirect visits are recorded |
+| Requires yourQR to be online when scanned | No | Yes |
+| yourQR scan analytics | Unavailable | Redirect visits are recorded |
 | Pause / resume | Unavailable | Supported |
 
 Static content and code type are fixed after creation. You can still edit their name, folder, colors, and logo. For a dynamic code, the slug is fixed after creation while its destination remains editable.
 
-Qori checks URL schemes and color contrast and limits logo size. Always scan the **final downloaded design** on the phones, screen sizes, and printed materials you plan to use. Dense text, decorative colors, printing, and logo overlays can affect readability.
+yourQR checks URL schemes and color contrast and limits logo size. Always scan the **final downloaded design** on the phones, screen sizes, and printed materials you plan to use. Dense text, decorative colors, printing, and logo overlays can affect readability.
 
 ## What runs free, and what needs hosting
 
-All included software features run locally without a subscription, metered QR plan, or external QR generation service. Static QR images can be generated and downloaded locally, then scanned without Qori running. Opening a static website URL still needs access to that website.
+All included software features run locally without a subscription, metered QR plan, or external QR generation service. Static QR images can be generated and downloaded locally, then scanned without yourQR running. Opening a static website URL still needs access to that website.
 
-Dynamic codes and their analytics need a reachable Qori server. `localhost` refers to the device doing the scan: a code containing `http://localhost:8787/...` will not reach your computer from a phone. For testing on your Wi-Fi, bind the API to `0.0.0.0`, set `PUBLIC_BASE_URL` to your computer’s LAN address, restart the API, allow the port through your firewall, and open that address on the phone. Keep this test instance on a trusted network.
+Dynamic codes and their analytics need a reachable yourQR server. `localhost` refers to the device doing the scan: a code containing `http://localhost:8787/...` will not reach your computer from a phone. For testing on your Wi-Fi, bind the API to `0.0.0.0`, set `PUBLIC_BASE_URL` to your computer’s LAN address, restart the API, allow the port through your firewall, and open that address on the phone. Keep this test instance on a trusted network.
 
 For codes shared outside your network, use an always-on host and a **stable public HTTPS address**. A server you own or a hosting provider may be suitable. Hosting and a custom domain can cost money; any free hosting option must support a persistent disk, Node.js, and the uptime you need. A provider-supplied stable hostname can work without buying a custom domain.
 
-Set the permanent public address **before printing dynamic codes**. Qori stores the encoded redirect address with each code. Changing `PUBLIC_BASE_URL` later cannot rewrite images that have already been downloaded or printed. Keep the old address serving those redirects if you move hosts.
+Set the permanent public address **before printing dynamic codes**. yourQR stores the encoded redirect address with each code. Changing `PUBLIC_BASE_URL` later cannot rewrite images that have already been downloaded or printed. Keep the old address serving those redirects if you move hosts.
+
+## Vercel hosted trial
+
+The Vercel configuration supports a **multi-user hosted trial**. Vercel serves the React files, runs the Express API as a Function, Neon Postgres keeps accounts/codes/folders/analytics, and private Vercel Blob stores uploaded PDFs and other files. The Vercel Function's local filesystem is not used for permanent data. Existing SQLite data and PDF files are not automatically copied to the hosted database.
+
+1. Import `sajanmaurya/yourQR` into Vercel and use `main` as the Production Branch after merging the hosted code in Project Settings. Use the repository root, the **Express** framework preset, Node **24.x**, and `npm run build`. Leave Output Directory at the framework default; do not override it to `dist` or choose the Vite preset. The root `index.js` serves the API and the build copies browser files into `public/` for Vercel’s CDN.
+2. Create a Neon Postgres database and a **private** Vercel Blob store, then link the Blob store to the Vercel project.
+3. In Vercel Project Settings → Environment Variables, configure `DATABASE_URL` with the **Neon** connection string and `PUBLIC_BASE_URL` with the final stable HTTPS domain. Set `TRUST_PROXY=1` and `NODE_ENV=production`. Confirm the linked private store supplies `BLOB_READ_WRITE_TOKEN`. Use separate database and Blob stores for previews; never point unreviewed previews at live customer data.
+4. Deploy, open the production URL, create two test accounts, and verify that neither can view or modify the other account’s data.
+5. Open `/api/health`, then create a test PDF QR code (also try a PDF larger than 4.5 MB), scan it from a phone on mobile data, replace the PDF, and verify the same QR slug opens the replacement. Pause the code and check that both its redirect and file link stop working. Check analytics, PNG/SVG downloads, logout/login, and persistence after redeploying before distributing codes. Public QR redirects must be reachable without Vercel deployment-protection login; yourQR’s dashboard still requires the owner login.
+
+Uploads go directly from the signed-in browser to private Blob using a short-lived, size-limited permission for one unique path. The API validates the file before attaching it to the library. Retrying finalization returns the same asset. Downloads are streamed through yourQR with active-code checks and byte-range support. Hosted login throttling is stored in Postgres so it survives Function restarts.
+
+Back up both Neon and Blob; the JSON library export is not a full backup. Hosted abandoned/invalid uploads remain private and may consume storage. Periodically compare Blob paths with `assets.blob_path` and `upload_intents.pathname`, removing only unreferenced objects whose upload intent expired more than a day ago. Never delete objects still referenced by assets. The local `reset-password` script is SQLite-only; keep the hosted owner credentials in a password manager. Provider costs, backup retention, cleanup and availability still need monitoring during the trial.
+
+The Vercel adapter uses Postgres and Blob only when running on Vercel; local and Docker installs keep SQLite-backed uploads. Vercel/Neon/Blob usage may incur charges after provider allowances. Check current provider pricing and set spending alerts before inviting anyone. Vercel projects can deploy previews for branches, but the `PUBLIC_BASE_URL` used to encode new QR codes must remain stable; do not create printed codes from a temporary preview URL.
+
+Account registration and tenant-level data isolation are implemented. Before a full commercial launch, add email verification, email-based password reset, abuse controls/CAPTCHA, subscriptions and quotas, privacy/terms pages, account deletion, database backups, monitoring, and an external security review.
 
 ## Architecture
 
 ```text
-React / Vite UI
-    │ authenticated, same-origin JSON requests
+React / Vite UI ── Vercel CDN (public/index.html and assets)
+    │ same-origin authenticated requests
     ▼
-Express API ─────────── SQLite file on a persistent disk
-    │                  owner · sessions · folders · codes · scan events · file bytes
+Express API ─────── Vercel Function
+    ├── Neon Postgres (hosted) / SQLite (local and self-hosted)
+    ├── private Vercel Blob (hosted file bytes) / SQLite BLOB (local files)
     ├── qrcode + sharp → SVG / PNG downloads with optional center logo
-    └── GET /r/:slug   → record visit → HTTP 302 to current destination
+    └── GET /r/:slug → record visit → HTTP 302 to current destination
 ```
 
-The frontend lives in `client/`. Express and database logic live in `server/`. Vite builds the frontend into `dist/`, which Express serves in a normal deployment. The browser and API share one origin; no separate CORS configuration or browser API key is required.
+The frontend lives in `client/`. Express and data access live in `server/`. Vite builds the frontend into `dist/`; the Vercel build copies it into `public/` for CDN delivery. The browser and API share one origin; no separate CORS configuration or browser database key is required.
 
-This MVP implements **SQLite**, using Node’s built-in `node:sqlite` module. It does not include a PostgreSQL adapter. SQLite suits this personal, single-process app and keeps setup simple. A larger multi-user service would need additional authorization, migrations, operational controls, and likely a PostgreSQL-backed data layer.
+This MVP uses SQLite via Node’s built-in `node:sqlite` locally and PostgreSQL on Vercel. Account IDs scope folders, uploaded assets, QR codes, analytics, exports, and direct-object mutations. Existing single-owner data is migrated into the first user automatically. A market launch still needs verified email and recovery flows plus operational and security controls.
 
 QR generation runs on your own server. It does not send destinations, uploaded logos, or analytics to a QR vendor. The server redirects visitors to the destination you selected; normal destination-site traffic is separate.
 
@@ -159,11 +178,12 @@ The supplied npm commands load `.env` automatically. Existing environment variab
 | `PUBLIC_BASE_URL` | `http://localhost:8787`; permanent address encoded into new dynamic QR codes |
 | `DB_PATH` | `./data/qori.sqlite`, relative to this app folder |
 | `NODE_ENV` | `development`; use `production` behind HTTPS |
-| `SETUP_TOKEN` | Optional for local setup, required for first-owner setup in production. Enter it in the setup screen. |
 | `TRUST_PROXY` | `0`; use `1` only when one trusted reverse proxy is the only route to the app |
 | `COOKIE_SECURE` | Automatically enabled for an HTTPS public URL; may be set explicitly to `true` or `false` |
+| `DATABASE_URL` | Vercel only; PostgreSQL connection string from Neon |
+| `BLOB_READ_WRITE_TOKEN` | Vercel only; supplied by linking the private Blob store to the project |
 
-Use a long random `SETUP_TOKEN` before publishing a fresh instance. Without a token, development setup accepts only local loopback access. After creating the owner, the setup endpoint cannot create another account. Keep `.env` private and outside version control.
+Registration is public. Keep `.env` private and outside version control, enforce HTTPS, and add email verification plus bot protection before a broad public launch.
 
 ## Self-host with Docker and HTTPS
 
@@ -171,24 +191,17 @@ The provided Compose file runs one non-root app container and stores SQLite in a
 
 1. Copy `.env.example` to `.env`.
 2. Set `PUBLIC_BASE_URL=https://qr.example.com` to your real address.
-3. Set a long random `SETUP_TOKEN`. This command can generate one:
-
-   ```sh
-   node -e "console.log(require('node:crypto').randomBytes(32).toString('hex'))"
-   ```
-
-4. Point that domain’s DNS to your server and allow inbound HTTP/HTTPS traffic for your proxy.
-5. Build and start Qori:
+3. Point that domain’s DNS to your server and allow inbound HTTP/HTTPS traffic for your proxy.
+4. Build and start yourQR:
 
    ```sh
    docker compose up -d --build
    ```
 
-6. Install Caddy on the host, copy `Caddyfile.example` into your Caddy configuration, replace the example domain, and reload Caddy. It proxies to `127.0.0.1:8787` and manages HTTPS for a correctly configured public domain.
-7. Open your HTTPS URL and create the owner using the setup token.
-8. After owner setup, remove the `SETUP_TOKEN` value from `.env` and run `docker compose up -d` again. The existing account remains; the setup endpoint cannot create a second owner. A new production instance refuses to start without a setup token.
+5. Install Caddy on the host, copy `Caddyfile.example` into your Caddy configuration, replace the example domain, and reload Caddy. It proxies to `127.0.0.1:8787` and manages HTTPS for a correctly configured public domain.
+6. Open your HTTPS URL and create a test account.
 
-The Compose file sets production mode, a container bind address, secure cookies, and a single trusted proxy. Its `PUBLIC_BASE_URL` and initial `SETUP_TOKEN` values come from `.env`. If you use a different proxy topology, update the proxy setting deliberately. With this default Compose configuration, visiting the loopback HTTP port directly will not support login because the session cookie requires HTTPS; use your public HTTPS URL.
+The Compose file sets production mode, a container bind address, secure cookies, and a single trusted proxy. If you use a different proxy topology, update the proxy setting deliberately. With this default Compose configuration, visiting the loopback HTTP port directly will not support login because the session cookie requires HTTPS; use your public HTTPS URL.
 
 For an installation without Docker, run `npm ci`, `npm run build`, and `npm start` under a service manager. Use production settings, a persistent `data/` folder, one app process, and the same reverse-proxy arrangement. Never expose a fresh development instance as a public service.
 
@@ -228,14 +241,14 @@ Recovery requires local access to the database and the existing email; it cannot
 - Estimated visitors use a daily rotating, keyed hash of request signals. The secret is stored in your database. Raw IP addresses and complete user-agent strings are not stored in scan events.
 - Visitor totals are approximate daily unique counts summed over the selected period. One person can count again on another day or device; shared networks can undercount.
 - Bots, link previews, and repeated visits may increase totals. Basic bot/preview labels are available, but there is no reliable bot filtering or geolocation in this MVP.
-- Static codes bypass this app when scanned, so Qori cannot measure their scans.
+- Static codes bypass this app when scanned, so yourQR cannot measure their scans.
 - Scan records persist until their code is deleted. Publish any privacy notice your intended deployment needs.
 
 ## Authentication and scope
 
-Passwords use salted scrypt hashes. Sessions use random opaque tokens, store only token hashes in SQLite, and expire after seven days. Cookies are HttpOnly and SameSite; production HTTPS uses secure cookies. Mutating API requests check origins, login/setup attempts are throttled, inputs are validated, and database queries use bound parameters.
+Passwords use salted scrypt hashes. Sessions use random opaque tokens, store only token hashes in the database, and expire after seven days. Cookies are HttpOnly and SameSite; production HTTPS uses secure cookies. Mutating API requests check origins, login/setup attempts are throttled, inputs are validated, and database queries use bound parameters.
 
-The owner can manage all saved records. Public visitors can only follow enabled dynamic redirects. There is no public registration after initial setup, no multi-user sharing, and no separate administrator role. Qori is an MVP for personal use; backups, host updates, availability, and access to your server remain part of operating it.
+The owner can manage all saved records. Public visitors can only follow enabled dynamic redirects. There is no public registration after initial setup, no multi-user sharing, and no separate administrator role. yourQR is an MVP for personal use; backups, host updates, availability, and access to your server remain part of operating it.
 
 ## API overview
 
@@ -252,6 +265,7 @@ All `/api` routes except health, session information, and authentication require
 | `GET /api/qrs/:id/download?format=png\|svg` | Download a saved design |
 | `POST /api/preview` | Render a design preview without saving |
 | `POST /api/assets?type=pdf\|image\|audio\|pptx` | Authenticated raw file upload; `Content-Type: application/octet-stream`, encoded filename in `X-File-Name` |
+| `POST /api/assets/upload-intent`, `POST /api/assets/upload-token`, `POST /api/assets/finalize` | Hosted authenticated direct-upload flow; raw upload endpoint is local-only |
 | `GET /api/assets/:id/content` | Owner-only uploaded-file preview |
 | `DELETE /api/assets/:id` | Remove an upload not referenced by a saved QR |
 | `GET`, `POST /api/folders` | List or create folders |
@@ -272,7 +286,7 @@ npx playwright install chromium
 npm run test:e2e
 ```
 
-The backend tests use isolated temporary databases. Browser tests exercise the built app with a separate database so they do not use your personal account or records. Review the test output for the exact checks run in your environment. Test reports and screenshots are local development artifacts and are excluded from version control.
+The backend tests use isolated temporary databases. `server/hosted.test.js` runs PostgreSQL queries in PGlite with simulated private Blob storage, covering an 8 MB PDF, upload permissions, repeated finalization, download ranges, replacement/pause, analytics, folders and shared login throttling. This checks application behavior; real Neon connectivity, Blob uploads, CDN headers and Vercel routing still require the deployment smoke test above. Browser tests exercise the built app with a separate database so they do not use your personal account or records. Review the test output for the exact checks run in your environment. Test reports and screenshots are local development artifacts and are excluded from version control.
 
 Browser tests use Playwright’s Chromium by default. You can use an installed Microsoft Edge instead by setting `PLAYWRIGHT_CHANNEL=msedge` before running `npm run test:e2e` (`$env:PLAYWRIGHT_CHANNEL='msedge'` in PowerShell). This is useful on Windows when Edge is already available.
 

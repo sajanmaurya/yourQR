@@ -55,7 +55,7 @@ export async function downloadCode(id, format) {
   const anchor = document.createElement('a');
   anchor.href = url;
   const header = response.headers.get('content-disposition') || '';
-  anchor.download = /filename="?([^";]+)"?/.exec(header)?.[1] || `qori-${id}.${format}`;
+  anchor.download = /filename="?([^";]+)"?/.exec(header)?.[1] || `yourQR-${id}.${format}`;
   document.body.appendChild(anchor); anchor.click(); anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
@@ -66,7 +66,7 @@ export async function downloadBackup() {
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
   const anchor = document.createElement('a');
-  anchor.href = url; anchor.download = `qori-backup-${new Date().toISOString().slice(0, 10)}.json`;
+  anchor.href = url; anchor.download = `yourQR-backup-${new Date().toISOString().slice(0, 10)}.json`;
   document.body.appendChild(anchor); anchor.click(); anchor.remove();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
