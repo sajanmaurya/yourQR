@@ -12,6 +12,7 @@
     "build": "node scripts/clean-vercel-public.mjs && npm run lint && vite build && node scripts/prepare-vercel-public.mjs",
     "start": "node --env-file-if-exists=.env server/index.js",
     "test": "node --test server/*.test.js",
+    "test:capacity": "node --test server/scan-capacity.test.js",
     "test:e2e": "playwright test",
     "reset-password": "node --env-file-if-exists=.env server/reset-password.js",
     "share:wifi": "node --env-file-if-exists=.env scripts/share-wifi.js",
