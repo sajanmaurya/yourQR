@@ -68,7 +68,7 @@ export function createApp(options = {}) {
   if (proxyHops) app.set('trust proxy', proxyHops);
   app.use(helmet({
     contentSecurityPolicy: environment === 'production' ? {
-      directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'", 'https://sdk.cashfree.com'], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:'], fontSrc: ["'self'", 'data:'], connectSrc: ["'self'", ...(db.driver === 'postgres' ? ['https://*.blob.vercel-storage.com', 'https://vercel.com/api/blob'] : [])], upgradeInsecureRequests: publicUrl.protocol === 'https:' ? [] : null },
+      directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'", 'https://sdk.cashfree.com'], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:'], fontSrc: ["'self'", 'data:'], frameSrc: ['https://*.cashfree.com'], connectSrc: ["'self'", 'https://*.cashfree.com', ...(db.driver === 'postgres' ? ['https://*.blob.vercel-storage.com', 'https://vercel.com/api/blob'] : [])], upgradeInsecureRequests: publicUrl.protocol === 'https:' ? [] : null },
     } : false,
     strictTransportSecurity: publicUrl.protocol === 'https:' ? undefined : false,
   }));
