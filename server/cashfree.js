@@ -1,6 +1,6 @@
 import express from 'express';
 import { createHmac, createHash, timingSafeEqual, randomUUID } from 'node:crypto';
-import { dbAll, dbGet, dbRun } from './database.js';
+import { dbGet, dbRun } from './database.js';
 import { ValidationError } from './qr.js';
 
 export function cashfreeConfig(override) {
