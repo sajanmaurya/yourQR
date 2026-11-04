@@ -75,13 +75,13 @@ function validatedPlan(plan, expectedId) {
 }
 const statusAllowlist = new Set([
   'INITIALIZED', 'PENDING', 'ACTIVE', 'PAUSED', 'CANCELLED', 'EXPIRED',
-  'FAILED', 'COMPLETED', 'ON_HOLD', 'BANK_APPROVAL_PENDING',
+  'FAILED', 'COMPLETED', 'ON_HOLD', 'BANK_APPROVAL_PENDING', 'CUSTOMER_CANCELLED', 'CUSTOMER_PAUSED', 'LINK_EXPIRED', 'CARD_EXPIRED',
 ]);
 async function newest(db, userId) {
   return dbGet(db, 'SELECT * FROM cashfree_subscriptions WHERE user_id=? ORDER BY created_at DESC LIMIT 1', [userId]);
 }
 function presentation(row) {
-  const active = row?.status === 'ACTIVE' && row.authorization_status === 'SUCCESS';
+  const active = row?.status === 'ACTIVE' && ['SUCCESS', 'ACTIVE'].includes(row.authorization_status);
   return { tier: active ? 'Pro' : 'Free', status: row?.status || 'NONE', subscriptionId: row?.id || null };
 }
 async function reconcile(db, row, remote) {
@@ -151,7 +151,7 @@ export function registerCashfreeApi(app, db, config, gateway, publicBaseUrl) {
     if (!locked) throw new ValidationError('A checkout is already starting. Please retry shortly.', 409);
     try {
       let existing = await newest(db, req.user.id);
-      if (existing && !['CANCELLED', 'EXPIRED', 'COMPLETED', 'FAILED'].includes(existing.status)) {
+      if (existing && !['CANCELLED', 'CUSTOMER_CANCELLED', 'EXPIRED', 'LINK_EXPIRED', 'COMPLETED', 'FAILED'].includes(existing.status)) {
         existing = await reconcile(db, existing, await gateway.fetchSubscription(existing.id));
         if (presentation(existing).tier === 'Pro') throw new ValidationError('You already have an active Pro subscription.', 409);
         if (existing.session_id && ['INITIALIZED', 'PENDING'].includes(existing.status)) {
