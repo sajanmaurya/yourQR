@@ -361,6 +361,11 @@ export function createApp(options = {}) {
   if (existsSync(path.join(distPath, 'index.html'))) {
     app.use(express.static(distPath, { index: false, maxAge: environment === 'production' ? '1h' : 0 }));
     app.use((req, res, next) => {
+      // Missing build assets must be 404s, not HTML with a misleading 200 status.
+      // A stale tab may request an old hashed JS/CSS file after a deployment.
+      if (req.path.startsWith('/assets/') || req.path === '/favicon.svg') {
+        return res.status(404).set('Cache-Control', 'no-store').type('text/plain').send('Asset not found.');
+      }
       if (req.method === 'GET' && req.accepts('html')) return res.set('Cache-Control', 'no-store, max-age=0').sendFile(path.join(distPath, 'index.html'));
       next();
     });
