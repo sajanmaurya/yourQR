@@ -10,6 +10,7 @@ import { openDatabase, openPostgresDatabase, dbGet, dbAll, dbRun, hashPassword, 
 import { contentType as getContentType } from '../shared/content-types.js';
 import { resolveContent } from './content.js';
 import { registerAssets, mapAsset } from './assets.js';
+import { cashfreeConfig, createCashfreeGateway, registerCashfreeWebhook, registerCashfreeApi } from './cashfree.js';
 import { ValidationError, textField, validColor, validateColors, validDestination, validSlug, validLogo, renderQR } from './qr.js';
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -51,6 +52,8 @@ export function createApp(options = {}) {
     throw new Error('Vercel requires an HTTPS PUBLIC_BASE_URL and a private Blob store with BLOB_READ_WRITE_TOKEN.');
   }
   const db = options.db || (usePostgres ? openPostgresDatabase() : openDatabase(dbPath));
+  const billing = cashfreeConfig(options.cashfreeConfig);
+  const cashfreeGateway = billing.enabled ? (options.cashfreeGateway || createCashfreeGateway(billing)) : null;
   let analyticsSecret = '';
   let startupError;
   const databaseReady = (async () => {
@@ -65,10 +68,11 @@ export function createApp(options = {}) {
   if (proxyHops) app.set('trust proxy', proxyHops);
   app.use(helmet({
     contentSecurityPolicy: environment === 'production' ? {
-      directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:'], fontSrc: ["'self'", 'data:'], connectSrc: ["'self'", ...(db.driver === 'postgres' ? ['https://*.blob.vercel-storage.com', 'https://vercel.com/api/blob'] : [])], upgradeInsecureRequests: publicUrl.protocol === 'https:' ? [] : null },
+      directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'", 'https://sdk.cashfree.com'], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:'], fontSrc: ["'self'", 'data:'], frameSrc: ['https://*.cashfree.com'], connectSrc: ["'self'", 'https://*.cashfree.com', ...(db.driver === 'postgres' ? ['https://*.blob.vercel-storage.com', 'https://vercel.com/api/blob'] : [])], upgradeInsecureRequests: publicUrl.protocol === 'https:' ? [] : null },
     } : false,
     strictTransportSecurity: publicUrl.protocol === 'https:' ? undefined : false,
   }));
+  registerCashfreeWebhook(app, db, billing, cashfreeGateway);
   app.use(express.json({ limit: '350kb' }));
   app.use('/api', async (req, res, next) => {
     res.set('Cache-Control', 'no-store');
@@ -161,6 +165,7 @@ export function createApp(options = {}) {
   });
 
   app.use('/api', requireAuth);
+  const cashfreeEntitlements = registerCashfreeApi(app, db, billing, cashfreeGateway, publicBaseUrl);
   const servePublicAsset = registerAssets(app, db, options.blobStore);
   const getRow = async (id, userId) => {
     const row = await dbGet(db, 'SELECT q.*, (SELECT COUNT(*) FROM user_scans WHERE qr_id=q.id) AS scan_count FROM user_qr_codes q WHERE q.id = ? AND q.user_id = ?', [id, userId]);
@@ -237,6 +242,7 @@ export function createApp(options = {}) {
     res.json({ qrs });
   });
   app.post('/api/qrs', async (req, res) => {
+    if (!(await cashfreeEntitlements.canCreateCode(req.user.id))) throw new ValidationError('Free QR limit reached. Visit Billing to upgrade.', 403);
     const qr = await prepareQR(req.body, null, false, req.user.id);
     const id = randomUUID(), now = new Date().toISOString();
     try {
