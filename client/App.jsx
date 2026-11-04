@@ -16,7 +16,7 @@ export default function App() {
   const [folders, setFolders] = useState([]);
   const [dataLoading, setDataLoading] = useState(false);
   const [dataError, setDataError] = useState('');
-  const [page, setPage] = useState(() => new URLSearchParams(window.location.search).get('billing') === 'return' ? 'billing' : 'codes');
+  const [page, setPage] = useState(() => new window.URLSearchParams(window.location.search).get('billing') === 'return' ? 'billing' : 'codes');
   const [folderId, setFolderId] = useState('');
   const [mobileOpen, setMobileOpen] = useState(false);
   const [editor, setEditor] = useState(null);
