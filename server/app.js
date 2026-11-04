@@ -10,6 +10,7 @@ import { openDatabase, openPostgresDatabase, dbGet, dbAll, dbRun, hashPassword, 
 import { contentType as getContentType } from '../shared/content-types.js';
 import { resolveContent } from './content.js';
 import { registerAssets, mapAsset } from './assets.js';
+import { billingConfig, createRazorpayGateway, registerBillingWebhook, registerBillingApi } from './billing.js';
 import { ValidationError, textField, validColor, validateColors, validDestination, validSlug, validLogo, renderQR } from './qr.js';
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -51,6 +52,8 @@ export function createApp(options = {}) {
     throw new Error('Vercel requires an HTTPS PUBLIC_BASE_URL and a private Blob store with BLOB_READ_WRITE_TOKEN.');
   }
   const db = options.db || (usePostgres ? openPostgresDatabase() : openDatabase(dbPath));
+  const billing = billingConfig(options.billingConfig);
+  const billingGateway = billing.enabled ? (options.billingGateway || createRazorpayGateway(billing)) : null;
   let analyticsSecret = '';
   let startupError;
   const databaseReady = (async () => {
@@ -69,6 +72,8 @@ export function createApp(options = {}) {
     } : false,
     strictTransportSecurity: publicUrl.protocol === 'https:' ? undefined : false,
   }));
+  // Razorpay's HMAC must be checked against the exact raw request bytes.
+  registerBillingWebhook(app, db, billing, billingGateway);
   app.use(express.json({ limit: '350kb' }));
   app.use('/api', async (req, res, next) => {
     res.set('Cache-Control', 'no-store');
@@ -161,6 +166,7 @@ export function createApp(options = {}) {
   });
 
   app.use('/api', requireAuth);
+  const billingEntitlements = registerBillingApi(app, db, billing, billingGateway);
   const servePublicAsset = registerAssets(app, db, options.blobStore);
   const getRow = async (id, userId) => {
     const row = await dbGet(db, 'SELECT q.*, (SELECT COUNT(*) FROM user_scans WHERE qr_id=q.id) AS scan_count FROM user_qr_codes q WHERE q.id = ? AND q.user_id = ?', [id, userId]);
@@ -237,6 +243,8 @@ export function createApp(options = {}) {
     res.json({ qrs });
   });
   app.post('/api/qrs', async (req, res) => {
+    if (!(await billingEntitlements.canCreateCode(req.user.id)))
+      throw new ValidationError('Your free plan has reached its saved QR limit. Upgrade under Billing to create more codes.', 403);
     const qr = await prepareQR(req.body, null, false, req.user.id);
     const id = randomUUID(), now = new Date().toISOString();
     try {
