@@ -5,6 +5,6 @@ import AppErrorBoundary from './AppErrorBoundary.jsx';
 import './styles.css';
 import './content-types.css';
 import './qa-improvements.css';
-import './glass.css';
+import './pearl.css';
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><AppErrorBoundary><App /></AppErrorBoundary></React.StrictMode>);
