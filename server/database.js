@@ -78,6 +78,20 @@ export function openDatabase(dbPath) {
     CREATE TABLE IF NOT EXISTS user_qr_codes (id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL, type TEXT NOT NULL CHECK(type IN ('static','dynamic')), content_type TEXT NOT NULL CHECK(content_type IN ('url','text')), destination TEXT NOT NULL, encoded_value TEXT, slug TEXT UNIQUE, fg_color TEXT NOT NULL, bg_color TEXT NOT NULL, logo_data_url TEXT, folder_id TEXT REFERENCES user_folders(id) ON DELETE SET NULL, active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, category TEXT, payload_json TEXT NOT NULL DEFAULT '{}', asset_id TEXT REFERENCES user_assets(id) ON DELETE RESTRICT, CHECK((type='dynamic' AND slug IS NOT NULL AND content_type='url') OR (type='static' AND slug IS NULL)));
     CREATE TABLE IF NOT EXISTS user_scans (id TEXT PRIMARY KEY, qr_id TEXT NOT NULL REFERENCES user_qr_codes(id) ON DELETE CASCADE, scanned_at TEXT NOT NULL, visitor_hash TEXT NOT NULL, device TEXT NOT NULL, referrer TEXT NOT NULL);
     CREATE TABLE IF NOT EXISTS user_upload_intents (id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE, pathname TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, name TEXT NOT NULL, expires_at INTEGER NOT NULL);
+    CREATE TABLE IF NOT EXISTS billing_subscriptions (
+      id TEXT PRIMARY KEY, user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      plan_id TEXT NOT NULL, status TEXT NOT NULL, payment_url TEXT NOT NULL,
+      current_end INTEGER, cancel_scheduled INTEGER NOT NULL DEFAULT 0,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS billing_subscriptions_by_user ON billing_subscriptions(user_id,created_at);
+    CREATE TABLE IF NOT EXISTS billing_webhook_events (
+      id TEXT PRIMARY KEY, subscription_id TEXT NOT NULL REFERENCES billing_subscriptions(id) ON DELETE CASCADE,
+      event_type TEXT NOT NULL, processed_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS billing_checkout_locks (
+      user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, locked_until INTEGER NOT NULL
+    );
     CREATE INDEX IF NOT EXISTS user_sessions_expiry ON user_sessions(expires_at);
     CREATE INDEX IF NOT EXISTS user_scans_qr_time ON user_scans(qr_id,scanned_at);
   `);
@@ -136,6 +150,20 @@ export const postgresSchema = `
   CREATE TABLE IF NOT EXISTS user_qr_codes (id TEXT PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL, type TEXT NOT NULL CHECK(type IN ('static','dynamic')), content_type TEXT NOT NULL CHECK(content_type IN ('url','text')), destination TEXT NOT NULL, encoded_value TEXT, slug TEXT UNIQUE, fg_color TEXT NOT NULL, bg_color TEXT NOT NULL, logo_data_url TEXT, folder_id TEXT REFERENCES user_folders(id) ON DELETE SET NULL, active INTEGER NOT NULL DEFAULT 1 CHECK(active IN (0,1)), created_at TEXT NOT NULL, updated_at TEXT NOT NULL, category TEXT, payload_json TEXT NOT NULL DEFAULT '{}', asset_id TEXT REFERENCES user_assets(id) ON DELETE RESTRICT, CHECK((type='dynamic' AND slug IS NOT NULL AND content_type='url') OR (type='static' AND slug IS NULL)));
   CREATE TABLE IF NOT EXISTS user_scans (id TEXT PRIMARY KEY, qr_id TEXT NOT NULL REFERENCES user_qr_codes(id) ON DELETE CASCADE, scanned_at TEXT NOT NULL, visitor_hash TEXT NOT NULL, device TEXT NOT NULL, referrer TEXT NOT NULL);
   CREATE TABLE IF NOT EXISTS user_upload_intents (id TEXT PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, pathname TEXT NOT NULL UNIQUE, kind TEXT NOT NULL, name TEXT NOT NULL, expires_at BIGINT NOT NULL);
+  CREATE TABLE IF NOT EXISTS billing_subscriptions (
+    id TEXT PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    plan_id TEXT NOT NULL, status TEXT NOT NULL, payment_url TEXT NOT NULL,
+    current_end BIGINT, cancel_scheduled INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS billing_subscriptions_by_user ON billing_subscriptions(user_id,created_at);
+  CREATE TABLE IF NOT EXISTS billing_webhook_events (
+    id TEXT PRIMARY KEY, subscription_id TEXT NOT NULL REFERENCES billing_subscriptions(id) ON DELETE CASCADE,
+    event_type TEXT NOT NULL, processed_at TEXT NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS billing_checkout_locks (
+    user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, locked_until BIGINT NOT NULL
+  );
   CREATE INDEX IF NOT EXISTS user_sessions_expiry ON user_sessions(expires_at);
   CREATE INDEX IF NOT EXISTS user_scans_qr_time ON user_scans(qr_id,scanned_at);
 `;
