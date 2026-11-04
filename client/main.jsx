@@ -6,5 +6,6 @@ import './styles.css';
 import './content-types.css';
 import './qa-improvements.css';
 import './pearl.css';
+import './billing.css';
 
 createRoot(document.getElementById('root')).render(<React.StrictMode><AppErrorBoundary><App /></AppErrorBoundary></React.StrictMode>);
