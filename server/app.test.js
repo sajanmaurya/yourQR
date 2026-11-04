@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, rm } from 'node:fs/promises';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import { execFile } from 'node:child_process';
@@ -280,4 +280,20 @@ test('production registration uses secure cookies and auth throttling', async (t
   const limited = await f.json('/api/auth/login', { method: 'POST', body: owner });
   assert.equal(limited.status, 429);
   assert.ok(Number(limited.headers.get('retry-after')) > 0);
+});
+
+test('missing static assets produce 404 instead of a misleading SPA HTML response', async t => {
+  const dir = await mkdtemp(path.join(os.tmpdir(), 'qori-test-'));
+  await writeFile(path.join(dir, 'index.html'), '<!doctype html><title>yourQR test shell</title>');
+  const f = await fixture({ distPath: dir });
+  t.after(async () => { await f.close(); await removeTestDir(dir); });
+  const home = await f.api('/', { authenticated: false, headers: { accept: 'text/html' } });
+  assert.equal(home.status, 200);
+  assert.match(await home.text(), /yourQR test shell/);
+  const missingScript = await f.api('/assets/removed-chunk.js', { authenticated: false, headers: { accept: '*/*' } });
+  assert.equal(missingScript.status, 404);
+  assert.match(await missingScript.text(), /Asset not found/);
+  assert.match(missingScript.headers.get('content-type'), /text\/plain/);
+  const missingIcon = await f.api('/favicon.svg', { authenticated: false, headers: { accept: 'text\/html' } });
+  assert.equal(missingIcon.status, 404);
 });
