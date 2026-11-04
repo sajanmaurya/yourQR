@@ -84,6 +84,7 @@ export function openDatabase(dbPath) {
     CREATE TABLE IF NOT EXISTS cashfree_checkout_locks (user_id INTEGER PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, locked_until INTEGER NOT NULL);
     CREATE INDEX IF NOT EXISTS user_sessions_expiry ON user_sessions(expires_at);
     CREATE INDEX IF NOT EXISTS user_scans_qr_time ON user_scans(qr_id,scanned_at);
+  CREATE INDEX IF NOT EXISTS user_scans_time ON user_scans(scanned_at);
   `);
   // Upgrade earlier local MVP databases without replacing their contents.
   if (!db.prepare('PRAGMA table_info(qr_codes)').all().some((column) => column.name === 'encoded_value')) {
@@ -146,6 +147,7 @@ export const postgresSchema = `
   CREATE TABLE IF NOT EXISTS cashfree_checkout_locks (user_id BIGINT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, locked_until BIGINT NOT NULL);
   CREATE INDEX IF NOT EXISTS user_sessions_expiry ON user_sessions(expires_at);
   CREATE INDEX IF NOT EXISTS user_scans_qr_time ON user_scans(qr_id,scanned_at);
+  CREATE INDEX IF NOT EXISTS user_scans_time ON user_scans(scanned_at);
 `;
 
 export function openPostgresDatabase(connectionString = process.env.DATABASE_URL) {
