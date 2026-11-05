@@ -13,3 +13,6 @@ input,textarea,.select-wrap select{background:#ffffffb8;border-color:#cbd5e7;bor
 .file-upload-zone{background:#ffffffa1;border-color:#9badd4;border-radius:16px}.file-upload-zone:hover{background:#f3f7ff}.file-sharing-note,.mode-notice,.workspace-tip{background:#eaf0ff90}.inline-error{background:#fff0ed;color:#a13c32;border-color:#ecc0b7}.toast{background:#f9fbfff5;border:1px solid white;box-shadow:0 10px 40px #23344c25}
 @supports not (backdrop-filter:blur(1px)){.sidebar,.topbar,.panel,.qr-card,.modal,.auth-form-box,.collection-toolbar{background:#f4f7fd}}
 @media(max-width:700px){.auth-form-side{background:transparent;padding:25px 18px 70px}.auth-form-box{padding:24px 20px;max-width:390px;width:100%;margin:auto}.sidebar{background:#edf3fff2}.panel,.qr-card,.collection-toolbar{border-radius:15px}.modal{border-radius:18px}.auth-form-box h2{font-size:26px}}
+:root .clerk-glass-card { background: rgba(255,255,255,.82); backdrop-filter: blur(20px); border: 1px solid white; box-shadow: 0 20px 60px #243b641c; }
+.clerk-auth-box { width: min(100%, 460px); }
+.clerk-account-control { display: flex; align-items: center; gap: 12px; padding: 8px 18px; color: var(--muted); font-size: 12px; }

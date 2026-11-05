@@ -100,6 +100,7 @@ export function openDatabase(dbPath) {
   `);
   db.prepare('INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)')
     .run('analytics_secret', randomBytes(32).toString('hex'));
+  db.exec('CREATE TABLE IF NOT EXISTS clerk_identities (clerk_id TEXT PRIMARY KEY, user_id INTEGER NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE)');
   return db;
 }
 
@@ -128,6 +129,7 @@ export const postgresSchema = `
   CREATE INDEX IF NOT EXISTS sessions_expiry ON sessions(expires_at);
   CREATE TABLE IF NOT EXISTS users (id BIGSERIAL PRIMARY KEY, name TEXT NOT NULL, email TEXT NOT NULL UNIQUE, password_hash TEXT NOT NULL, created_at TEXT NOT NULL);
   CREATE UNIQUE INDEX IF NOT EXISTS users_email_nocase ON users(lower(email));
+  CREATE TABLE IF NOT EXISTS clerk_identities (clerk_id TEXT PRIMARY KEY, user_id BIGINT NOT NULL UNIQUE REFERENCES users(id) ON DELETE CASCADE);
   CREATE TABLE IF NOT EXISTS user_sessions (token_hash TEXT PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, expires_at BIGINT NOT NULL);
   CREATE TABLE IF NOT EXISTS user_folders (id TEXT PRIMARY KEY, user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE, name TEXT NOT NULL, color TEXT NOT NULL, created_at TEXT NOT NULL);
   CREATE UNIQUE INDEX IF NOT EXISTS user_folders_name_nocase ON user_folders(user_id,lower(name));

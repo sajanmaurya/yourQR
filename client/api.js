@@ -1,5 +1,14 @@
+let tokenProvider;
+export function setTokenProvider(provider) { tokenProvider = provider; }
+export async function authenticationHeaders() {
+  const token = tokenProvider ? await tokenProvider() : null;
+  return token ? { Authorization: `Bearer ${token}` } : {};
+}
+export async function authenticatedFetch(url, options = {}) {
+  return fetch(url, { ...options, headers: { ...options.headers, ...await authenticationHeaders() } });
+}
 export async function api(path, options = {}) {
-  const response = await fetch(`/api${path}`, {
+  const response = await authenticatedFetch(`/api${path}`, {
     credentials: 'same-origin',
     ...options,
     headers: { 'Content-Type': 'application/json', ...options.headers },
@@ -48,7 +57,7 @@ export function destinationLabel(value) {
 }
 
 export async function downloadCode(id, format) {
-  const response = await fetch(`/api/qrs/${id}/download?format=${format}`, { credentials: 'same-origin' });
+  const response = await authenticatedFetch(`/api/qrs/${id}/download?format=${format}`, { credentials: 'same-origin' });
   if (!response.ok) { const data = await response.json().catch(() => ({})); throw new Error(data.error || 'Download failed. Please try again.'); }
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);
@@ -61,7 +70,7 @@ export async function downloadCode(id, format) {
 }
 
 export async function downloadBackup() {
-  const response = await fetch('/api/export', { credentials: 'same-origin' });
+  const response = await authenticatedFetch('/api/export', { credentials: 'same-origin' });
   if (!response.ok) throw new Error('Backup export failed. Please try again.');
   const blob = await response.blob();
   const url = URL.createObjectURL(blob);

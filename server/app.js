@@ -10,6 +10,7 @@ import { openDatabase, openPostgresDatabase, dbGet, dbAll, dbRun, hashPassword, 
 import { contentType as getContentType } from '../shared/content-types.js';
 import { resolveContent } from './content.js';
 import { registerAssets, mapAsset } from './assets.js';
+import { createClerkAuth } from './clerk-auth.js';
 import { ValidationError, textField, validColor, validateColors, validDestination, validSlug, validLogo, renderQR } from './qr.js';
 
 const appRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -43,6 +44,11 @@ export function createApp(options = {}) {
     throw new Error('PUBLIC_BASE_URL must be an http(s) origin without a path, credentials, query, or fragment.');
   }
   const environment = options.environment ?? process.env.NODE_ENV ?? 'development';
+  const authProvider = options.authProvider ?? process.env.AUTH_PROVIDER ?? 'local';
+  if (!['local', 'clerk'].includes(authProvider)) throw new Error('AUTH_PROVIDER must be local or clerk.');
+  const clerkPublishableKey = options.clerkPublishableKey ?? process.env.CLERK_PUBLISHABLE_KEY ?? process.env.VITE_CLERK_PUBLISHABLE_KEY;
+  const clerkSecretKey = options.clerkSecretKey ?? process.env.CLERK_SECRET_KEY;
+  if (authProvider === 'clerk' && (!clerkPublishableKey || !clerkSecretKey)) throw new Error('Clerk authentication requires CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY.');
   const secureCookie = options.secureCookie ?? (process.env.COOKIE_SECURE !== undefined ? process.env.COOKIE_SECURE === 'true' : publicUrl.protocol === 'https:');
   const proxyHops = Number(options.trustProxy ?? process.env.TRUST_PROXY ?? 0);
   if (!Number.isInteger(proxyHops) || proxyHops < 0 || proxyHops > 5) throw new Error('TRUST_PROXY must be an integer from 0 to 5.');
@@ -60,12 +66,17 @@ export function createApp(options = {}) {
     analyticsSecret = setting.value;
   })().catch(error => { startupError = error; });
   const app = express();
+  const clerkHost = clerkPublishableKey ? Buffer.from(clerkPublishableKey.split('_').slice(2).join('_'), 'base64').toString().replace(/\$$/, '') : '';
+  if (authProvider === 'clerk' && !/^[a-z0-9.-]+$/i.test(clerkHost)) throw new Error('Invalid Clerk publishable key.');
+  const clerkOrigins = authProvider === 'clerk' ? [`https://${clerkHost}`] : [];
+  const clerk = authProvider === 'clerk' ? createClerkAuth({ db, publishableKey: clerkPublishableKey, secretKey: clerkSecretKey, authorizedParties: [publicUrl.origin, ...(environment !== 'production' ? ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:8787', 'http://127.0.0.1:8787'] : [])], adapter: options.clerkAdapter }) : null;
+  if (clerk) app.use('/api', clerk.middleware);
   app.use((req, res, next) => { databaseReady.then(() => next(startupError)); });
   app.disable('x-powered-by');
   if (proxyHops) app.set('trust proxy', proxyHops);
   app.use(helmet({
     contentSecurityPolicy: environment === 'production' ? {
-      directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'"], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:'], fontSrc: ["'self'", 'data:'], connectSrc: ["'self'", ...(db.driver === 'postgres' ? ['https://*.blob.vercel-storage.com', 'https://vercel.com/api/blob'] : [])], upgradeInsecureRequests: publicUrl.protocol === 'https:' ? [] : null },
+      directives: { defaultSrc: ["'self'"], scriptSrc: ["'self'", ...clerkOrigins, ...(clerk ? ['https://challenges.cloudflare.com', 'https://*.protect.clerk.com'] : [])], styleSrc: ["'self'", "'unsafe-inline'"], imgSrc: ["'self'", 'data:', ...(clerk ? ['https://img.clerk.com'] : [])], fontSrc: ["'self'", 'data:'], connectSrc: ["'self'", ...clerkOrigins, ...(clerk ? ['https://*.protect.clerk.com:*', 'https://clerk-telemetry.com'] : []), ...(db.driver === 'postgres' ? ['https://*.blob.vercel-storage.com', 'https://vercel.com/api/blob'] : [])], frameSrc: ["'self'", ...clerkOrigins, ...(clerk ? ['https://challenges.cloudflare.com', 'https://*.protect.clerk.com'] : [])], workerSrc: ["'self'", 'blob:'], upgradeInsecureRequests: publicUrl.protocol === 'https:' ? [] : null },
     } : false,
     strictTransportSecurity: publicUrl.protocol === 'https:' ? undefined : false,
   }));
@@ -80,6 +91,7 @@ export function createApp(options = {}) {
         return res.status(403).json({ error: 'This request came from an untrusted site.' });
       }
     }
+    if (clerk) { await clerk.resolve(req); return next(); }
     const cookie = parseCookie(req.get('cookie'))[cookieName];
     if (cookie && /^[a-f0-9]{64}$/.test(cookie)) {
       const session = await dbGet(db, 'SELECT users.* FROM user_sessions JOIN users ON user_sessions.user_id = users.id WHERE token_hash = ? AND expires_at > ?', [tokenHash(cookie), Date.now()]);
@@ -118,9 +130,17 @@ export function createApp(options = {}) {
   };
   const config = () => ({ publicBaseUrl, environment, version: '1.0.0', database: db.driver === 'postgres' ? 'PostgreSQL' : 'SQLite', blobUploads: db.driver === 'postgres', multiUser: true, registrationOpen: true, localOnly: ['localhost', '127.0.0.1', '[::1]'].includes(publicUrl.hostname), lanAddressStale: isLanAddressStale(publicBaseUrl, Object.values(networkInterfaces()).flat().filter(Boolean).map(item => item.address)) });
 
+  // Public bootstrap exposes only the publishable key, never the server key.
+  app.get('/api/auth/config', (req, res) => res.json({ provider: authProvider, publishableKey: clerk ? clerkPublishableKey : null }));
+  app.post('/api/auth/link', limitAuth, async (req, res) => {
+    if (!clerk) return res.status(404).json({ error: 'Clerk is not enabled.' });
+    res.json({ user: await clerk.link(req) });
+  });
+  app.use(['/api/auth/register', '/api/auth/setup', '/api/auth/login', '/api/auth/logout'], (req, res, next) => clerk ? res.status(409).json({ error: 'Use Clerk to manage your account and session.' }) : next());
+
   app.get('/api/health', (req, res) => res.json({ status: 'ok', version: '1.0.0' }));
   app.get('/api/auth/session', async (req, res) => {
-    res.json({ authenticated: Boolean(req.user), setupRequired: false, user: req.user || null, config: config() });
+    res.json({ authenticated: Boolean(req.user), setupRequired: false, linkRequired: Boolean(req.clerkLinkRequired), user: req.user || null, config: { ...config(), authProvider } });
   });
   app.post(['/api/auth/register', '/api/auth/setup'], limitAuth, async (req, res) => {
     const name = textField(req.body?.name, 'Name', 80);

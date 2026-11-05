@@ -18,6 +18,8 @@
     "lint": "eslint client shared server scripts tests *.js"
   },
   "dependencies": {
+    "@clerk/express": "^2.1.88",
+    "@clerk/react": "^6.18.6",
     "@neondatabase/serverless": "^1.2.0",
     "@vercel/blob": "^2.8.2",
     "express": "^5.1.0",

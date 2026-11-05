@@ -2,7 +2,7 @@ import React, { useRef, useState } from 'react';
 import { Search, QrCode, Link2, FileText, Image, Smartphone, Type, MessageCircle, Play, Camera, Users, Send, ContactRound, MapPin, Wifi, Music2, Mail, CalendarCheck, Phone, Presentation, Route, ArrowUpRight, ShieldCheck, FileUp, ExternalLink, Globe2 } from 'lucide-react';
 import { CONTENT_TYPES, contentType } from '../shared/content-types.js';
 import { Select, Spinner } from './components.jsx';
-import { formatBytes } from './api.js';
+import { formatBytes, authenticatedFetch as fetch, authenticationHeaders } from './api.js';
 const Icons = { Search, QrCode, Link2, FileText, Image, Smartphone, Type, MessageCircle, Play, Camera, Users, Send, ContactRound, MapPin, Wifi, Music2, Mail, CalendarCheck, Phone, Presentation, Route, ArrowUpRight, ShieldCheck, FileUp, ExternalLink, Globe2 };
 
 export function TypeChooser({ onChoose }) {
@@ -34,7 +34,7 @@ export function ContentFields({ draft, qr, update, onUploading, setError, blobUp
         const intent = await intentResponse.json();
         if (!intentResponse.ok) throw new Error(intent.error || 'Upload could not start.');
         const { upload: uploadBlob } = await import('@vercel/blob/client');
-        const blob = await uploadBlob(intent.pathname, file, { access: 'private', handleUploadUrl: '/api/assets/upload-token', contentType: file.type || 'application/octet-stream', multipart: file.size > 5 * 1024 * 1024, onUploadProgress: progress => setUploadStatus(`Uploading… ${Math.round(progress.percentage)}%`) });
+        const blob = await uploadBlob(intent.pathname, file, { access: 'private', handleUploadUrl: '/api/assets/upload-token', headers: await authenticationHeaders(), contentType: file.type || 'application/octet-stream', multipart: file.size > 5 * 1024 * 1024, onUploadProgress: progress => setUploadStatus(`Uploading… ${Math.round(progress.percentage)}%`) });
         setUploadStatus('Checking your file…');
         const response = await fetch('/api/assets/finalize', { method: 'POST', credentials: 'same-origin', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ pathname: blob.pathname }) });
         const result = await response.json();

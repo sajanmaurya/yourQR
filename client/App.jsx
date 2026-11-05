@@ -8,7 +8,7 @@ import { addressScope } from '../shared/network.js';
 import { contentType } from '../shared/content-types.js';
 import Analytics, { Stat } from './Analytics.jsx';
 
-export default function App() {
+export default function App({ onSignOut, accountControl, renderAuth }) {
   const [session, setSession] = useState(null);
   const [sessionError, setSessionError] = useState('');
   const [qrs, setQrs] = useState([]);
@@ -70,16 +70,18 @@ export default function App() {
   const viewAnalytics = qr => { setAnalyticsQr(qr.id); setPage('analytics'); setFolderId(''); setMobileOpen(false); };
 
   async function logout() {
+    if (onSignOut) { try { await onSignOut(); } catch (error) { notify(error.message, true); } return; }
     try { await api('/auth/logout', { method: 'POST' }); setSession(previous => ({ ...previous, authenticated: false, setupRequired: false })); setQrs([]); setFolders([]); setPage('codes'); setFolderId(''); setMobileOpen(false); }
     catch (error) { notify(error.message, true); }
   }
   if (!session) return <div className="boot-screen"><Brand /><div>{sessionError ? <><InlineError>{sessionError}</InlineError><button type="button" className="button primary" onClick={loadSession}>Try again</button></> : <Spinner text="Opening your workspace…" />}</div></div>;
-  if (!session.authenticated) return <Auth session={session} onAuthenticated={loadSession} />;
+  if (!session.authenticated) return renderAuth ? renderAuth(session, loadSession) : <Auth session={session} onAuthenticated={loadSession} />;
 
   const qrActions = { onEdit: qr => setEditor({ qr }), onDownload, copyLink, toggleActive, deleteQr, viewAnalytics, onShare: qr => setSharing(qr) };
   return <div className="app-shell">
     {mobileOpen && <div className="sidebar-scrim" onClick={() => setMobileOpen(false)} />}
     <aside className={`sidebar ${mobileOpen ? 'mobile-open' : ''}`}>
+      {accountControl && <div className="clerk-account-control">{accountControl}<span>Manage your account</span></div>}
       <div className="sidebar-brand"><button type="button" className="brand-button" aria-label="yourQR home" onClick={() => navigate('codes')}><Brand /></button><button type="button" className="icon-button mobile-close" aria-label="Close navigation" onClick={() => setMobileOpen(false)}><X size={20} /></button></div>
       <div className="workspace-card"><span className="workspace-avatar"><QrCode size={21} /></span><div><strong>{session.user?.name}'s workspace</strong><span><span className="tiny-dot" />Private to your account</span></div><LockKeyhole size={13} className="muted" /></div>
       <span className="nav-label">WORKSPACE</span><nav className="main-nav" aria-label="Main navigation">
